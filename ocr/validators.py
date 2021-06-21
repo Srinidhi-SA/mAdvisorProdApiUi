@@ -12,9 +12,12 @@ OCR Validations
 # pylint: disable=line-too-long
 # pylint: disable=inconsistent-return-statements
 # -------------------------------------------------------------------------------
+import os
 import re
 import socket
 from django.core.exceptions import ValidationError
+from django.http import JsonResponse
+
 
 # -------------------------------------------------------------------------------
 
@@ -46,6 +49,7 @@ def validate_port(port):
     if port in range(1024, 65535):
         return True
 
+
 # -------------------------------------------------------------------------------
 
 # Validation for OCR Image file extension, max_file_size and no of attachments
@@ -57,17 +61,45 @@ VALID_EXTENSIONS = ['jpg', 'png', 'jpeg', 'tif', 'pdf']
 VALIDATION_ERROR_MESSAGE = 'Unsupported file extension.'
 
 
+def validate_image_dimension(imagefile, extension):
+    """ METHOD:  To Validate max and min Dimension for OCRImage model FileField"""
+    import PIL
+    max_height = 10000
+    max_width = 10000
+    max_height_pdf = 17
+    max_width_pdf = 17
+    min_height = 50
+    min_width = 50
+
+    if extension == 'img':
+        image = PIL.Image.open(imagefile.file)
+        width, height = image.size
+
+        if width > max_width or height > max_height:
+            return 1
+        elif width < min_width or height < min_height:
+            return 0
+    else:
+        import fitz
+        doc = fitz.open("pdf", imagefile.file)
+        page = doc[0]
+        width, height = [float(i) / 72 for i in page.MediaBox[2:]]
+        if width > max_width_pdf or height > max_height_pdf:
+            return 2
+
+
 def max_file_size(value):
     """ METHOD : To Validate max file size for OCRImage model FileField. """
-    limit = 50 * 1024 * 1024
+    limit = 20 * 1024 * 1024
     if value.size > limit:
-        raise ValidationError('File too large. Size should not exceed 50 MB.')
+        raise ValidationError('File too large. Size should not exceed 20 MB.')
 
 
 def max_num_files(value):
     """ METHOD : To Validate max number of file upload for OCRImage model FileField. """
     if len(value) > 100:
         raise ValidationError("Can't upload more than 100 files")
+
 
 def validate_phone_number(phone):
     """ METHOD : To Validate mobile number for OCRUserProfile model."""

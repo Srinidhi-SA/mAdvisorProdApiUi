@@ -54,11 +54,12 @@ from api.utils import \
     DatasetScoreDeploymentSerializer, \
     DatasetScoreDeploymentListSerializer, \
     TrainerNameListSerializer, \
-    ChangePasswordSerializer, UserListSerializer
+    ChangePasswordSerializer, UserListSerializer, \
+    OutlookTokenSerializer
 # RegressionSerlializer,
 # RegressionListSerializer
 from .models import Insight, Dataset, Job, Trainer, Score, Robo, SaveData, StockDataset, CustomApps, \
-    TrainAlgorithmMapping, ModelDeployment, DatasetScoreDeployment, convert2native
+    TrainAlgorithmMapping, ModelDeployment, DatasetScoreDeployment, convert2native, OutlookToken
 from api.tasks import clean_up_on_delete, create_model_autoML
 
 from api.permission import TrainerRelatedPermission, ScoreRelatedPermission, \
@@ -692,7 +693,10 @@ class TrainerView(viewsets.ModelViewSet):
                                 index += 1
                 config['config']['COLUMN_SETTINGS']['variableSelection'][:] = [x for x in config['config']['COLUMN_SETTINGS']['variableSelection'] if 'isFeatureColumn' not in list(x.keys())]
                 config['config']["ALGORITHM_SETTING"][6]['nnptc_parameters'] = convert2native(config['config']["ALGORITHM_SETTING"][6]['nnptc_parameters'])
-                tf_data = config['config']['ALGORITHM_SETTING'][5]['tensorflow_params']
+                if config['config']["ALGORITHM_SETTING"][4]["algorithmName"] == "Neural Network (TensorFlow)":
+                    tf_data = config['config']['ALGORITHM_SETTING'][4]['tensorflow_params']
+                else:
+                    tf_data = config['config']['ALGORITHM_SETTING'][5]['tensorflow_params']
 
             except Exception as err:
                 print(err)
@@ -1118,22 +1122,30 @@ class StockDatasetView(viewsets.ModelViewSet):
         stock_query = StockDataset.objects.filter(deleted=False, created_by_id=user_id, name=data['name'])
         if len(stock_query) > 0:
             # return creation_failed_exception("Analysis name already exists")
-            return "Analysis name already exists"
+            return "Analysis name already exists", [None]
         from api.StockAdvisor.crawling.process import fetch_news_articles
         companies = []
         no_articles_flag = False
+        err_comp = []
         for key in stocks:
-            articles = fetch_news_articles(stocks[key], data['domains'])
+            articles, message = fetch_news_articles(stocks[key], data['domains'])
+            if isinstance(message, list):
+                err_comp.extend(message)
             if articles is None or len(articles) <= 0:
                 no_articles_flag = True
                 companies.append(stocks[key])
+        print(*err_comp)
+        if err_comp:
+            return 'No news articles found for {}'.format(','.join(err_comp)), err_comp
         if no_articles_flag:
             if len(companies) > 1:
                 company_str = "{} and {}".format(", ".join(companies[:-1]), companies[-1])
             else:
                 company_str = companies[0]
             # return creation_failed_exception("No news articles found for "+company_str)
-            return "No news articles found for "+company_str
+            return message, companies
+        else:
+            return None, [None]
 
     def create(self, request, *args, **kwargs):
 
@@ -1141,17 +1153,18 @@ class StockDatasetView(viewsets.ModelViewSet):
         config = data.get('config')
         new_data = {'name': config.get('analysis_name')}
         domains = config.get('domains')
-        new_data['domains'] = (", ").join(list(set(domains)))
+        new_data['domains'] = ", ".join(list(set(domains)))
         stock_symbol = config.get('stock_symbols')
 
         stocks = {item['ticker'].lower(): item['name'] for item in stock_symbol}
-        error_str = self.validate_inputs(stocks, new_data, request.user.id)
+        error_str, companies = self.validate_inputs(stocks, new_data, request.user.id)
         if error_str is not None:
-            return creation_failed_exception(error_str)
+            return creation_failed_exception(error_str, *companies)
 
         new_data['stock_symbols'] = json.dumps(stocks)
         new_data['input_file'] = None
         new_data['created_by'] = request.user.id
+        new_data['start_date'] = datetime.datetime.today() - datetime.timedelta(days=7)
 
         serializer = StockDatasetSerializer(data=new_data, context={"request": self.request})
         if serializer.is_valid():
@@ -1170,6 +1183,17 @@ class StockDatasetView(viewsets.ModelViewSet):
             return creation_failed_exception("File Doesn't exist.")
 
         serializer = StockDatasetSerializer(instance=instance, context={"request": self.request})
+        if serializer.data['meta_data']:
+            unique_sources = len(set(i['source'] for i in serializer.data['meta_data']['extracted_data']))
+
+            for i in serializer.data['meta_data']['uiMetaData']['metaDataUI']:
+                if i['displayName'] == 'News source':
+                    i['displayName'] = 'Number of News Sources'
+                    i['value'] = unique_sources
+            for i in serializer.data['meta_data']['scriptMetaData']['metaData']:
+                if i['displayName'] == 'News source':
+                    i['displayName'] = 'Number of News Sources'
+                    i['value'] = unique_sources
         return Response(serializer.data)
 
     def list(self, request, *args, **kwargs):
@@ -1248,7 +1272,19 @@ class StockDatasetView(viewsets.ModelViewSet):
             return creation_failed_exception("File Doesn't exist.")
 
         serializer = StockDatasetSerializer(instance=instance, context={"request": self.request})
-        return Response(serializer.data)
+        if serializer.data['meta_data']:
+            unique_sources = len(set(i['source'] for i in serializer.data['meta_data']['extracted_data']))
+            for i in serializer.data['meta_data']['uiMetaData']['metaDataUI']:
+                if i['displayName'] == 'News source':
+                    i['displayName'] = 'Number of News sources'
+                    i['value'] = unique_sources
+            for i in serializer.data['meta_data']['scriptMetaData']['metaData']:
+                if i['displayName'] == 'News source':
+                    i['displayName'] = 'Number of News sources'
+                    i['value'] = unique_sources
+            return Response(serializer.data)
+        else:
+            return JsonResponse({"message": "Couldn't generate metadata"})
 
     @detail_route(methods=['get'])
     def fetch_word_cloud(self, request, slug=None, *args, **kwargs):
@@ -1270,6 +1306,22 @@ class StockDatasetView(viewsets.ModelViewSet):
     historic data
     data from bluemix -- natural language understanding
     """
+
+    @list_route(methods=['get'])
+    def get_all_stockssense(self, request, *args, **kwargs):
+        try:
+            queryset = StockDataset.objects.filter(
+                created_by=self.request.user,
+                deleted=False
+            )
+            serializer = StockDatasetSerializer(queryset, many=True, context={"request": self.request})
+            modelList = dict()
+            for index, i in enumerate(serializer.data):
+                modelList.update({index: {'name': i.get('name'), 'slug': i.get('slug'), 'status': i.get('status')}})
+            print(modelList)
+            return JsonResponse({'allStockList': modelList})
+        except Exception as err:
+            return JsonResponse({'message': str(err)})
 
 
 class AudiosetView(viewsets.ModelViewSet):
@@ -1890,9 +1942,7 @@ def chart_changes_in_metadata_chart(chart_data):
 
 def add_slugs(results, object_slug=""):
     from api import helper
-    if settings.DEBUG == True:
-        print(results)
-        print(list(results.keys()))
+
     listOfNodes = results.get('listOfNodes', [])
     listOfCards = results.get('listOfCards', [])
 
@@ -1907,7 +1957,14 @@ def add_slugs(results, object_slug=""):
 
     if len(listOfNodes) > 0:
         for loN in listOfNodes:
-            add_slugs(loN, object_slug=object_slug)
+            try:
+                if loN["name"]=="Prediction" and "Depth Of Tree 3" in loN:
+                    for loNN in [loN["Depth Of Tree 3"],loN["Depth Of Tree 4"],loN["Depth Of Tree 5"]]:
+                        add_slugs(loNN, object_slug=object_slug)
+                else:
+                    add_slugs(loN, object_slug=object_slug)
+            except:
+                add_slugs(loN, object_slug=object_slug)
 
     return results
 
@@ -1915,8 +1972,8 @@ def add_slugs(results, object_slug=""):
 def convert_chart_data_to_beautiful_things(data, object_slug=""):
     from api import helper
     for card in data:
-        if settings.DEBUG == True:
-            print(card)
+        #if settings.DEBUG == True:
+            #print(card)
         if card["dataType"] == "c3Chart":
             chart_raw_data = card["data"]
             # function
@@ -5839,7 +5896,7 @@ def set_job_reporting(request, slug=None, report_name=None):
     new_error = request.body
     error_log = json.loads(job.error_report)
     json_formatted_new_error = None
-    if isinstance(new_error, str) or isinstance(new_error, str):
+    if isinstance(new_error, str):
         json_formatted_new_error = json.loads(new_error)
     elif isinstance(new_error, dict):
         json_formatted_new_error = new_error
@@ -6066,49 +6123,37 @@ def get_algorithm_config_list(request):
         levels = 2
 
     user = request.user
-
+    if mode == "analyst":
+        import os
+        slug = request.GET['slug']
+        dataset_object = Dataset.objects.get(slug=slug)
+        dataset_filesize = os.stat(dataset_object.input_file.path).st_size
     try:
         if app_type == "CLASSIFICATION" and mode == 'autoML':
             algorithm_config_list = copy.deepcopy(settings.AUTOML_ALGORITHM_LIST_CLASSIFICATION)
-            algoArray = algorithm_config_list["ALGORITHM_SETTING"]
-            tempArray = algoArray[0]["hyperParameterSetting"][0]["params"][0]["defaultValue"]
-            if levels > 2:
-                tempArray.append(settings.SKLEARN_ROC_OBJ)
-
-            for obj in algoArray:
-                obj["hyperParameterSetting"][0]["params"][0]["defaultValue"] = tempArray
         elif app_type == "REGRESSION" and mode == 'autoML':
             algorithm_config_list = copy.deepcopy(settings.AUTOML_ALGORITHM_LIST_REGRESSION)
-            algoArray = algorithm_config_list["ALGORITHM_SETTING"]
-            tempArray = algoArray[0]["hyperParameterSetting"][0]["params"][0]["defaultValue"]
-            if levels > 2:
-                tempArray.append(settings.SKLEARN_ROC_OBJ)
-
-            for obj in algoArray:
-                obj["hyperParameterSetting"][0]["params"][0]["defaultValue"] = tempArray
-        # else:
-        #    algorithm_config_list = copy.deepcopy(settings.ALGORITHM_LIST_CLASSIFICATION)
-
         elif app_type == "CLASSIFICATION" and mode == 'analyst':
-            algorithm_config_list = copy.deepcopy(settings.ALGORITHM_LIST_CLASSIFICATION)
-            algoArray = algorithm_config_list["ALGORITHM_SETTING"]
-            tempArray = algoArray[0]["hyperParameterSetting"][0]["params"][0]["defaultValue"]
-            if levels > 2:
-                tempArray.append(settings.SKLEARN_ROC_OBJ)
-
-            for obj in algoArray:
-                obj["hyperParameterSetting"][0]["params"][0]["defaultValue"] = tempArray
+            if dataset_filesize < 128000000:
+                algorithm_config_list = copy.deepcopy(settings.ALGORITHM_LIST_CLASSIFICATION)
+            else:
+                algorithm_config_list = copy.deepcopy(settings.ALGORITHM_LIST_CLASSIFICATION_PYSPARK)
         elif app_type == "REGRESSION" and mode == 'analyst':
-            algorithm_config_list = copy.deepcopy(settings.ALGORITHM_LIST_REGRESSION)
-            algoArray = algorithm_config_list["ALGORITHM_SETTING"]
-            tempArray = algoArray[0]["hyperParameterSetting"][0]["params"][0]["defaultValue"]
-            if levels > 2:
-                tempArray.append(settings.SKLEARN_ROC_OBJ)
-
-            for obj in algoArray:
-                obj["hyperParameterSetting"][0]["params"][0]["defaultValue"] = tempArray
+            if dataset_filesize < 128000000:
+                algorithm_config_list = copy.deepcopy(settings.ALGORITHM_LIST_REGRESSION)
+            else:
+                algorithm_config_list = copy.deepcopy(settings.ALGORITHM_LIST_REGRESSION_PYSPARK)
         else:
             algorithm_config_list = copy.deepcopy(settings.ALGORITHM_LIST_CLASSIFICATION)
+
+        algoArray = algorithm_config_list["ALGORITHM_SETTING"]
+        tempArray = algoArray[0]["hyperParameterSetting"][0]["params"][0]["defaultValue"]
+        if levels > 2:
+            tempArray.append(settings.SKLEARN_ROC_OBJ)
+
+        for obj in algoArray:
+            obj["hyperParameterSetting"][0]["params"][0]["defaultValue"] = tempArray
+
     except Exception as e:
         print(e)
 
@@ -6137,15 +6182,18 @@ def get_algorithm_config_list(request):
 
     return JsonResponse(algorithm_config_list)
 
+@api_view(['GET'])
 def get_appID_appName_map(request):
-    # from django.core import serializers
+
     from api.models import CustomApps
-    appIDmapfromDB = CustomApps.objects.only('app_id', 'name', 'app_type')
-    # appIDmap_serialized = serializers.serialize('json', appIDmap)
+    appIDmapfromDB = CustomApps.objects.filter(
+        customappsusermapping__user=request.user).only('app_id', 'displayName')
+
     appIDmap = []
     for row in appIDmapfromDB:
         appIDmap.append({
-            "app_id": row.app_id, "app_name": row.name, "app_type": row.app_type
+            "app_id": row.app_id,
+            "displayName": row.displayName
         })
 
     return JsonResponse({"appIDMapping": appIDmap})
@@ -6819,20 +6867,20 @@ def view_model_summary_detail(request):
         config = json.loads(instance.config)
         data = json.loads(instance.data)
         try:
-            table_data = data['model_summary']['listOfCards'][2]['cardData'][1]['data']['table_c3']
-            FI_dict_keys = table_data[0]
-            FI_dict_values = table_data[1]
-            # import collections
-            import operator
-            #FI_dict = collections.OrderedDict(dict(zip(FI_dict_keys,FI_dict_values)))
-            FI_dict = dict(list(zip(FI_dict_keys,FI_dict_values)))
-            FI_dict = {str(k): str(v) for k, v in FI_dict.items()}
-            FI_dict= sorted(list(FI_dict.items()), key=operator.itemgetter(1),reverse=True)
-            FI_dict=FI_dict[1:len(FI_dict):1]
+            # table_data = data['model_summary']['listOfCards'][2]['cardData'][1]['data']['table_c3']
+            # FI_dict_keys = table_data[0]
+            # FI_dict_values = table_data[1]
+            # # import collections
+            # import operator
+            # #FI_dict = collections.OrderedDict(dict(zip(FI_dict_keys,FI_dict_values)))
+            # FI_dict = dict(list(zip(FI_dict_keys,FI_dict_values)))
+            # FI_dict = {str(k): str(v) for k, v in FI_dict.items()}
+            # FI_dict= sorted(list(FI_dict.items()), key=operator.itemgetter(1),reverse=True)
+            # FI_dict=FI_dict[1:len(FI_dict):1]
             model_summary_data = dict()
             model_summary_data['model_summary'] = data['model_summary']
             model_config.update(
-                {'name': instance.name, 'slug': instance.slug, 'data': model_summary_data, 'table_data': FI_dict})
+                {'name': instance.name, 'slug': instance.slug, 'data': model_summary_data})
         except Exception as err:
             print(err)
             #model_config.update({'name':instance.name,'slug':instance.slug,'data':data.model_summary})
@@ -6921,3 +6969,19 @@ class UserView(viewsets.ModelViewSet):
             return JsonResponse({'allUsersList': UsersList})
         except Exception as err:
             return JsonResponse({'message': str(err)})
+
+
+class OutlookTokenView(viewsets.ModelViewSet):
+    serializer_class = OutlookTokenSerializer
+    model = OutlookToken
+    permission_classes = (IsAuthenticated,)
+
+    def get_queryset(self):
+        queryset = OutlookToken.objects.filter(
+            created_by=self.request.user,
+            deleted=False,
+        ).select_related('created_by')
+        return queryset
+
+    def get_serializer_class(self):
+        return OutlookTokenSerializer

@@ -1,32 +1,7 @@
 import React from "react";
 import { connect } from "react-redux";
-import { Scrollbars } from "react-custom-scrollbars";
-import {
-  Button,
-  Dropdown,
-  Menu,
-  MenuItem,
-  Modal,
-  Nav,
-  NavItem,
-  Tab,
-  Row,
-  Col
-} from "react-bootstrap";
-import {
-  openBinsOrLevelsModalAction,
-  closeBinsOrLevelsModalAction,
-  openTransformColumnModalAction,
-  closeTransformColumnModalAction,
-  selectedBinsOrLevelsTabAction
-} from "../../actions/dataActions";
-import { saveEncodingValuesAction } from "../../actions/featureEngineeringActions";
-
 @connect(store => {
   return {
-    login_response: store.login.login_response,
-    dataPreview: store.datasets.dataPreview,
-    selectedItem: store.datasets.selectedItem,
     deployData: store.apps.deployData,
     deployItem: store.apps.deployItem
   };
@@ -36,7 +11,6 @@ export class DeployPopup extends React.Component {
     super(props);
     this.pickValue = this.pickValue.bind(this);
     this.state = {};
-    this.state.encodingRadioButton;
   }
 
   getDeployData() {
@@ -57,24 +31,12 @@ export class DeployPopup extends React.Component {
     return event.target.value;
   }
 
-  handleEncodingRadioButtonOnchange(event) {
-    this.state.encodingRadioButton = event.target.value;
-    this.saveEncodingValues();
-  }
-  saveEncodingValues() {
-    this.props.dispatch(
-      saveEncodingValuesAction(this.state.encodingRadioButton)
-    );
-    this.setState({ state: this.state });
-  }
-
   render() {
     var depData = this.getDeployData();
     return (
       <div class="modal-body">
         <form>
           <div class="xs-m-20" />
-
           <div class="row form-group">
             <label for="dname" class="col-sm-4 control-label">
               Deployment name
@@ -85,7 +47,7 @@ export class DeployPopup extends React.Component {
                 name="name"
                 class="form-control"
                 placeholder="Name of the deployment"
-                defaultvalue={depData.deploytrainer}
+                defaultValue={depData.deploytrainer}
                 onInput={this.pickValue}
                 onChange={this.onchangeInput.bind(this)}
               />
@@ -101,7 +63,7 @@ export class DeployPopup extends React.Component {
                 name="datasetname"
                 class="form-control"
                 placeholder="Name of dataset"
-                defaultvalue={depData.datasetname}
+                defaultValue={depData.datasetname}
                 onInput={this.pickValue}
                 onChange={this.onchangeInput.bind(this)}
               />
@@ -182,15 +144,12 @@ export class DeployPopup extends React.Component {
                 name="timing_details"
                 defaultValue={depData.timing_details}
                 onChange={this.pickValue}
-              ><option value="none" selected>
+              ><option value="none">
                   --Select--
                 </option>
                 <option value="monthly">Monthly</option>
                 <option value="weekly">Weekly</option>
                 <option value="daily">Daily</option>
-                {/* <option value="hourly">Hourly</option>
-                <option value="every 15 minutes">Every 15 minutes</option>
-                <option value="every 10 minutes">Every 10 minutes</option> */}
               </select>
             </div>
           </div>
@@ -209,11 +168,6 @@ export class DeployPopup extends React.Component {
                 onChange={this.onchangeInput.bind(this)}
                 disabled
               />
-            </div>
-          </div>
-          <div className="row form-group">
-            <div className="col-sm-12 text-center">
-              <div className="text-danger visibilityHidden" id="fileErrorMsg" />
             </div>
           </div>
         </form>

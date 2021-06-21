@@ -1,18 +1,13 @@
-import { displayName } from "react-bootstrap-dialog";
 
 export default function reducer(state = {
-        analystModeSelectedFlag:false,
         appsModelShowModal:false,
         modelList: {},
         allModelList: {},
         algoList:{},
         deploymentData:{},
         viewDeploymentFlag:false,
-        filter:"",
-        selectedProject: "",
         allProjects: {},
         deploymentList:{},
-        summarySelected:{},
         deployShowModal:false,
         algo_search_element:"",
         deployItem:{},
@@ -22,7 +17,6 @@ export default function reducer(state = {
         testValue:50,
         scoreList:{},
         appsScoreShowModal:false,
-        score_current_page:1,
         modelSlug:"",
         modelSummary:{},
         algorithmsList:null,
@@ -36,7 +30,6 @@ export default function reducer(state = {
         appsLoaderPerValue:-1,
         appsLoaderText :"",
         appsLoadedText :["Loading..."],
-        setAppsLoaderValues:{},
         modelSummaryFlag:false,
         parameterTuningFlag:false,
         scoreSummaryFlag:false,
@@ -59,7 +52,6 @@ export default function reducer(state = {
         appsSelectedTabId:"model",
         audioFileUploadShowFlag:false,
         audioFileUpload:{},
-        appsLoaderImage:"assets/images/Processing_mAdvisor.gif",
         audioFileSummary:{},
         audioFileSlug :"",
         audioFileSummaryFlag:false,
@@ -102,7 +94,6 @@ export default function reducer(state = {
         apps_regression_levelCount:"",
         regression_algorithm_data:[],
         regression_algorithm_data_manual:[],
-        regression_isAutomatic:1,
         regression_selectedTechnique:"crossValidation",
         regression_crossvalidationvalue:2,
         selectedModelCount:0,
@@ -119,18 +110,13 @@ export default function reducer(state = {
         panels:[],
         modelLoaderidxVal:0,
         modelLoaderidx:0,
+        allStockAnalysisList:{},
+        chartLoaderFlag:false,
+        activeAlgorithmTab:""
 
 }, action) {
 
     switch (action.type) {
-        case "UPDATE_MODE_SELECTION":
-    {
-        return {
-            ...state,
-            analystModeSelectedFlag:action.flag,
-        }
-    }
-    break;
     case "APPS_MODEL_SHOW_POPUP":
     {
         return {
@@ -161,7 +147,6 @@ export default function reducer(state = {
 
     case "MODEL_LIST_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch model list!!");
     }
     break;
@@ -173,28 +158,11 @@ export default function reducer(state = {
         }
       }
       break;
-      case "MODEL_ALL_LIST_ERROR":
-      {
-        throw new Error("Unable to fetch model list!!");
-      }
-      break;
-    case "DEPLOY_PREVIEW":
+    case "MODEL_ALL_LIST_ERROR":
     {
-        return {
-            ...state,
-            filter: action.data,
-        }
-    }
-    break;
-
-    case "DEPLOY_PREVIEW_ERROR":
-    {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch model list!!");
     }
     break;
-
-    // case "MODEL_LIST2":
     case "ALGO_LIST":
     {
         return {
@@ -216,14 +184,12 @@ export default function reducer(state = {
 
     case "ALGO_LIST_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch model list!!");
     }
     break;
 
     case "DEPLOYMENT_LIST_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch model list!!");
     }
     break;
@@ -233,7 +199,6 @@ export default function reducer(state = {
         return {
             ...state,
             deploymentList: action.data,
-            // latestDeployments:action.latestDeployments,
             current_page:action.current_page,
         }
     }
@@ -291,20 +256,8 @@ export default function reducer(state = {
     break;
 
     case "VIEW_DEPLOY_ERROR":
-    {   
-        //alert(action.json.non_field_errors);
-        throw new Error("Unable to fetch Deployment Details");
-    }
-    break;
-
-    case "SUMMARY_SELECTED_LIST":
     {
-      return {
-        ...state,
-        summarySelected: action.summarySelected,
-        // latestDatasets:action.latestDatasets,
-        // current_page: action.current_page
-      }
+        throw new Error("Unable to fetch Deployment Details");
     }
     break;
     case "SEARCH_ALGORITHM":
@@ -333,16 +286,6 @@ export default function reducer(state = {
       }
     }
     break;
-
-    case "SHOW_VIEW_MODAL":
-    {
-      return {
-        ...state,
-        viewDeploymentFlag: true,
-        // deployItem:action.selectedItem
-      }
-    }
-    break;
     case "HIDE_VIEW_MODAL":
     {
       return {
@@ -357,7 +300,6 @@ export default function reducer(state = {
       return {
         ...state,
         allProjects: action.data,
-        selectedProject: action.slug
       }
     }
     break;
@@ -387,10 +329,15 @@ export default function reducer(state = {
         }
     }
     break;
-
+    case "CLEAR_SCORE_LIST":{
+        return{
+            ...state,
+            scoreList:{}
+        }
+    }
+    break;
     case "SCORE_LIST_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch score list!!");
     }
     break;
@@ -436,7 +383,6 @@ export default function reducer(state = {
     break;
     case "MODEL_SUMMARY_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch model summary!!");
     }
     break;
@@ -460,24 +406,31 @@ export default function reducer(state = {
         }
     }
     break;
-
+    case "CLEAR_SCORE_SUMMARY":{
+        return{
+            ...state,
+            scoreSummary: {},
+            scoreSlug:"",
+            scoreSlugShared:"",
+        }
+    }
+    break;
     case "SCORE_SUMMARY_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch score summary!!");
     }
     break;
     case "SCORE_SUMMARY_CSV_DATA":
     {
+       var scoreCsvData=action.data.length!=0?action.data.csv_data:[]
         return {
             ...state,
-            scoreSummaryCSVData: action.data.csv_data,
+            scoreSummaryCSVData: scoreCsvData,
         }
     }
     break;
     case "SELECTED_APP_DETAILS":
     {
-
         return {
             ...state,
             currentAppId: action.appId,
@@ -486,12 +439,18 @@ export default function reducer(state = {
         }
     }
     break;
+    case "SHOW_CREATE_MODAL_LOADER":
+      {
+        return {
+          ...state,
+          appsLoaderModal: true
+        }
+      }
+      break;
     case "OPEN_APPS_LOADER_MODAL":
     {
-
         return {
             ...state,
-            appsLoaderModal:true,
             appsLoaderPerValue:action.value,
             appsLoaderText :action.text,
         }
@@ -537,18 +496,6 @@ export default function reducer(state = {
         }
     }
     break;
-    case "SET_APPS_LOADER_MODAL":{
-        var allLoaderValues = state.setAppsLoaderValues;
-        allLoaderValues[action.slug] = {
-            "value" : action.value,
-            "status" : action.status,
-        }
-        return {
-          ...state,
-          setAppsLoaderValues : allLoaderValues,
-        }
-    }
-    break;
     case "UPDATE_APPS_LOADER_VALUE":
     {
 
@@ -568,7 +515,6 @@ export default function reducer(state = {
     break;
     case "CREATE_MODEL_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to create model!");
     }
     break;
@@ -597,12 +543,6 @@ export default function reducer(state = {
         }
     }
     break;
-    case "CREATE_SCORE_ERROR":
-    {
-        //alert(action.json.non_field_errors);
-        throw new Error("Unable to create score!");
-    }
-    break;
     case "UPDATE_SCORE_FLAG":
     {
         return {
@@ -624,7 +564,6 @@ export default function reducer(state = {
 
     case "ROBO_LIST_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch robo list!!");
     }
     break;
@@ -681,7 +620,6 @@ export default function reducer(state = {
 
     case "ROBO_DATA_UPLOAD_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to upload robo data files!!");
     }
     break;
@@ -707,7 +645,6 @@ export default function reducer(state = {
     break;
     case "ROBO_SUMMARY_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch robo summary!!");
     }
     break;
@@ -856,7 +793,6 @@ export default function reducer(state = {
 
     case "AUDIO_LIST_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch audio list!!");
     }
     break;
@@ -877,7 +813,8 @@ export default function reducer(state = {
             robo_sorttype:action.roboSorttype
         }
     }
-    break;	case "SORT_APPS_MODEL":
+    break;	
+    case "SORT_APPS_MODEL":
     {
         return{
             ...state,
@@ -956,10 +893,7 @@ export default function reducer(state = {
     
     case "DELETE_LAYER_TENSORFLOW":
     { 
-        // var curTfData =state.tensorFlowInputs.filter(i=>i.layerId!=action.deleteId)
         var curTfData =state.tensorFlowInputs.filter(i=>i!=null).filter(j=>j.layerId!=action.deleteId)
-
-        // curTfData.splice(curTfData.indexOf(`'${action.deleteId-1}'`), 1 );
         var delPanel = state.panels;
         delPanel.pop(action.deleteId)
         return{
@@ -1011,7 +945,6 @@ export default function reducer(state = {
 
     case "STOCK_LIST_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch stock list!!");
     }
     break;
@@ -1033,13 +966,6 @@ export default function reducer(state = {
         }
     }
     break;
-    case "CRAWL_ERROR":
-    {
-        //alert(action.json.non_field_errors);
-        throw new Error("Unable to crawl data!!");
-    }
-    break;
-
     case "STOCK_CRAWL_SUCCESS":
     {
         return{
@@ -1073,21 +999,24 @@ export default function reducer(state = {
         }
     }
     break;
-
     case "APPS_LIST":
     {
         return {
             ...state,
             appsList: action.json,
-            //app_filtered_keywords:action.json.data[0].tag_keywords,
             current_page:action.current_page,
         }
     }
     break;
-
+    case "CLEAR_APPS_LIST":{
+        return{
+            ...state,
+            appsList:[],
+            current_page:1,
+        }
+    }
     case "APPS_LIST_ERROR":
     {
-        //alert(action.json.non_field_errors);
         throw new Error("Unable to fetch apps list data!!");
     }
     break;
@@ -1218,14 +1147,6 @@ export default function reducer(state = {
         }
     }
     break;
-    case "SET_REGRESSION_DEFAULT_AUTOMATIC":
-    {
-        return{
-            ...state,
-            regression_isAutomatic:action.data,
-        }
-    }
-    break;
     case "UPDATE_REGRESSION_TECHNIQUE":
     {
         return{
@@ -1248,7 +1169,6 @@ export default function reducer(state = {
             ...state,
             regression_algorithm_data:[],
             regression_algorithm_data_manual:[],
-            regression_isAutomatic:1,
             regression_selectedTechnique:"crossValidation",
             regression_crossvalidationvalue:2,
         }
@@ -1317,6 +1237,39 @@ export default function reducer(state = {
         }
     }
     break;
+    case "ALL_STOCK_ANALYSIS_LIST":
+      {
+        return {
+          ...state,
+          allStockAnalysisList: action.data,
+        }
+      }
+      break;
+      case "ALL_STOCK_ANALYSIS_LIST_ERROR":
+      {
+        throw new Error("Unable to fetch stock analysis list!!");
+      }
+      break;
+    case "SET_LOADER_FLAG":{
+        return{
+            ...state,
+            chartLoaderFlag:action.flag
+        }
+    }
+    break;
+    case "ACTIVE_ALGORITHM_SLUG":{
+        return{
+            ...state,
+            activeAlgorithmTab:action.slug
+        }
+    }
+    break;
+    case "CLEAR_MODEL_LIST": {
+        return{
+            ...state,
+            modelList:{}
+        }
+    }
     }
     return state
 }

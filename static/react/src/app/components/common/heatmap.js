@@ -1,10 +1,4 @@
 import React from "react";
-import { connect } from "react-redux";
-import { Redirect } from "react-router";
-import store from "../../store";
-import {getSignalAnalysis} from "../../actions/signalActions";
-import {C3Chart} from "../c3Chart";
-import renderHTML from 'react-render-html';
 import HeatMap from '../../helpers/heatmap';
 import {generateHeatMapHeaders,generateHeatMapRows} from "../../helpers/helper";
 import { Scrollbars } from 'react-custom-scrollbars';
@@ -18,7 +12,7 @@ export class HeatMapTable extends React.Component {
   componentDidMount(){
 	  HeatMap(this.randomNum);
   }
-//To render Heatmap table in signal summary
+
   render() {
       this.randomNum = Math.random().toString(36).substr(2,8);
    var data = this.props.tableData;
@@ -34,7 +28,7 @@ export class HeatMapTable extends React.Component {
    var rowComponents = generateHeatMapRows(data);
    return (
           <div className={this.props.classId}>
-         <Scrollbars style={{height:400}} >
+         <Scrollbars autoHeight autoHeightMin={100} autoHeightMax={200} renderTrackHorizontal={props => <div {...props} className="track-horizontal" style={{display: "none"}}/>} style={{width:"100%"}}>
            <table className={className}>
                <thead>{headerComponents}</thead>
                <tbody>{rowComponents}</tbody>

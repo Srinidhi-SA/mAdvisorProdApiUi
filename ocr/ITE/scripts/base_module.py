@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-from ocr.ITE.scripts.utils import optimal_params
-from ocr.ITE.scripts.utils import extract_mask, extract_mask_horizontal
+from ocr.ITE.scripts.utils import optimal_params, extract_mask_clean, extract_mask_clean_vert
+from ocr.ITE.scripts.utils import extract_mask, extract_mask_horizontal, linesObjectContours, contourLinePlot
 import numpy as np
 import cv2
 from sklearn.cluster import DBSCAN
@@ -17,7 +17,12 @@ class BaseModule:
         self.microsoft_analysis = img_obj.get_microsoft_analysis()
         self.image_name = image_name
 
-    def extract_info(self, template, bwimage):
+    def extract_info(self, template, bwimage, domain_flag, image_shape):
+        height = bwimage.shape[0]
+        width = bwimage.shape[1]
+        CONTOUR, _ = cv2.findContours(bwimage, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        wholeline_indices = linesObjectContours(CONTOUR, height, width)
+        genimage = contourLinePlot(CONTOUR, height, width, wholeline_indices)
         scalev, scaleh = optimal_params(bwimage, task='table')
         self.mask, horizontal, vertical = extract_mask(bwimage, scalev=scalev,
                                                        scaleh=scaleh)
@@ -57,30 +62,41 @@ class BaseModule:
             'paragraphs': self.paras,
             'table_coordinates': table_count_dict,
             'temp_number': template_obj.template_number,
-            'domain_classification': 'base'}
+            'domain_classification': domain_flag,
+            'image_shape': image_shape}
 
         tables = self.final_mapped_dict_table
         #        print('TABLES : ' , tables)
         if max(self.mask.shape) <= 500:
-
             white_canvas = 0 * np.ones(self.mask.shape).astype(self.mask.dtype)
             self.mask2 = white_canvas.copy()
+            return self.final_json, self.mask2 + genimage, self.metadata, template_obj.template
 
-            return self.final_json, self.mask2, self.metadata, template_obj.template
+        elif (len(tables) > 0) and (sum([len(tables[table]) for table in tables]) > 0):
 
-        elif (len(tables) == 0) or (sum([len(tables[table]) for table in tables]) == 0):
+            clean_mask = extract_mask_clean(horizontal.copy()) + extract_mask_clean_vert(vertical.copy())
+            table_mask = self.extract_tables_only_mask(table_count_dict, self.mask)
+            self.mask = clean_mask + table_mask
 
-            self.mask2, horizontal, vertical = extract_mask_horizontal(bwimage, scalev=scalev,
-                                                                       scaleh=scaleh)
-            return self.final_json, self.mask2, self.metadata, template_obj.template
+        elif min(self.mask.shape) <= 500:
+            self.mask, horizontal, vertical = extract_mask_horizontal(
+                bwimage, scalev=scalev, scaleh=scaleh)
         else:
-            pass
-
-        return self.final_json, self.mask, self.metadata, template_obj.template
-
+            self.mask = extract_mask_clean(horizontal.copy()) + extract_mask_clean_vert(vertical.copy())
+        return self.final_json, self.mask + genimage, self.metadata, template_obj.template
 
     #        page metadata for paragraphs to be done here
     #        pdf's with large size not working
+
+    def extract_tables_only_mask(self, table_count_dict, mask):
+
+        black_page = 0 * np.ones(mask.shape).astype(mask.dtype)
+
+        for table in table_count_dict:
+            temp = table_count_dict[table]
+            black_page[temp[1]:temp[3], temp[0]:temp[2]] = mask[temp[1]:temp[3], temp[0]:temp[2]]
+
+        return black_page
 
     def remove_borders_if_present(self, mask):
         """
@@ -89,8 +105,9 @@ class BaseModule:
         """
         # ONLY WHEN THE PAGE HAS BOARDERS WHICH ARE NOT ACTUALLY A TABLE
         weird = True
+        offset = 0
+        mask_original = mask.copy()
         while weird:
-
             parent_area = mask.shape[0] * mask.shape[1]
             contours, _ = cv2.findContours(
                 mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -101,7 +118,7 @@ class BaseModule:
             #            bounding co-ordinates
             #            table_centroid_dict = {}
             table_rel_centroid_dist_dict = {}
-
+            count = 0
             for cnt in contours:
 
                 area = cv2.contourArea(cnt)  # Area of the contour
@@ -114,19 +131,20 @@ class BaseModule:
 
                 # CHECKING IF THE TABLE IS SINGLE CELLED!!!!
 
-                cells, _ = cv2.findContours(
-                    mask[y + 10:y + height - 10, x + 10:x + width - 10],
-                    cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-                cells_peri = [cv2.arcLength(cnt, True) for cnt in cells]
-                cells_approxs_lens = [len(cv2.approxPolyDP(
-                    cells[i], 0.02 * cells_peri[i], True))
-                    for i in range(len(cells))]
+                #                cells, _ = cv2.findContours(
+                #                    mask[y + 10:y + height - 10, x + 10:x + width - 10],
+                #                    cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                #
+                #                cells_peri = [cv2.arcLength(cnt, True) for cnt in cells]
+                #                cells_approxs_lens = [len(cv2.approxPolyDP(
+                #                    cells[i], 0.02 * cells_peri[i], True))
+                #                    for i in range(len(cells))]
 
                 if (area > 0.8 * parent_area):  # BORDERS CONSIDERED AS TABLE
 
-                    print('IM COMIN HERE')
-                    mask = mask[y + 10:y + height - 10, x + 10:x + width - 10]
+                    print('Border Detected, offseting mask')
+                    mask = mask[y + 10:y + height - 10, x + 10:x + width - 10].copy()
+                    offset += 10
                     break
 
                 if (
@@ -142,13 +160,11 @@ class BaseModule:
                         min(
                             width,
                             height)) > 20:
-                    #                 print(len(cells))
-                    #                 print(cells_approxs_lens)
-
-                    table_count_dict[table_number + 1] = [x,
-                                                          y, x + width - 1,
-                                                          y + height - 1]
-                    table_area_dict[table_number + 1] = round((area/parent_area),3)
+                    table_count_dict[table_number + 1] = [x + offset,
+                                                          y + offset, x + width - 1 + offset,
+                                                          y + height - 1 + offset]
+                    table_area_dict[table_number +
+                                    1] = round((area / parent_area), 3)
 
                     M = cv2.moments(cnt)
                     cx = int(M['m10'] / M['m00'])
@@ -156,16 +172,23 @@ class BaseModule:
                     table_rel_centroid_dist_dict[table_number + 1] = round(
                         ((cx) ** 2 + (cy) ** 2) ** 0.5 / (mask.shape[0] + mask.shape[1]), 2)
 
-                    #                    table_centroid_dict[table_number + 1] = [(cx, cy)]
+                    # table_centroid_dict[table_number + 1] = [(cx, cy)]
                     table_number = table_number + 1
-
                     weird = False
 
-            weird = False
-        return mask, table_count_dict, table_area_dict, parent_area, areaThr, table_rel_centroid_dist_dict
+                count += 1
+            if count == len(contours): weird = False
 
-    def check_if_table_in_table(self, table_count_dict, table_area_dict,
-                                parent_area, mask, areaThr, table_rel_centroid_dist_dict):
+        return mask_original, table_count_dict, table_area_dict, parent_area, areaThr, table_rel_centroid_dist_dict
+
+    def check_if_table_in_table(
+            self,
+            table_count_dict,
+            table_area_dict,
+            parent_area,
+            mask,
+            areaThr,
+            table_rel_centroid_dist_dict):
         #        table_centroid_dict = {}
         #        table_rel_centroid_dist_dict = {}
         inner_table_dict = {}
@@ -211,14 +234,8 @@ class BaseModule:
                         M = cv2.moments(cnt)
                         cx = int(M['m10'] / M['m00'])
                         cy = int(M['m01'] / M['m00'])
-                        table_rel_centroid_dist_dict[table_number + 1] = round(
+                        table_rel_centroid_dist_dict[int(str(table_number) + str(inner_table_number + 1))] = round(
                             ((cx) ** 2 + (cy) ** 2) ** 0.5 / (mask.shape[0] + mask.shape[1]), 2)
-
-                        # =============================================================================
-                        #                         table_centroid_dict[int(
-                        #                             str(table_number) +
-                        #                             str(inner_table_number + 1))] = [(cx, cy)]
-                        # =============================================================================
 
                         inner_table_dict[int(str(table_number) +
                                              str(inner_table_number +
@@ -236,9 +253,6 @@ class BaseModule:
                                                          temp[1] +
                                                          10]
                         inner_table_number = inner_table_number + 1
-
-        # print(inner_table_number,' area :' , area , ' width :',width ,
-        # ' Height :',height)
 
         if len(inner_table_dict) > 0:
             for inner_table in inner_table_dict:
@@ -293,9 +307,6 @@ class BaseModule:
                     stencil2[temp[1]:temp[3], temp[0]:temp[2]
                     ] = white_page[temp[1]:temp[3], temp[0]:temp[2]]
 
-            # cv2.imwrite("Tables/" + image_path.split('/')[-1][:-19] + '__TABLE_'
-            # + str(table_number) + '.png', stencil2)
-
             table_cell_dict[table_number] = self.get_cell_coordinates(
                 stencil2, scalev_optimal=scalev)
 
@@ -303,13 +314,18 @@ class BaseModule:
         tables = list(table_cell_dict.keys())
         for table in tables:
             final_mapped_dict_cell = {}
-            for cell in table_cell_dict[table].keys():
-                p1 = table_cell_dict[table][cell][0][0]
-                p3 = table_cell_dict[table][cell][1][1]
-                final_mapped_dict_cell[cell] = {"boundingBox": {"p1": p1,
-                                                                "p3": p3},
-                                                "words": []}
-            final_mapped_dict_table[table] = final_mapped_dict_cell
+            if table_cell_dict[table]:
+                for cell in table_cell_dict[table].keys():
+                    p1 = table_cell_dict[table][cell][0][0]
+                    p3 = table_cell_dict[table][cell][1][1]
+                    final_mapped_dict_cell[cell] = {"boundingBox": {"p1": p1,
+                                                                    "p3": p3},
+                                                    "words": []}
+                final_mapped_dict_table[table] = final_mapped_dict_cell
+            else:
+                del table_cell_dict[table]
+                del self.updated_table_count_dict[table]
+
         return table_cell_dict, final_mapped_dict_table, order
 
     def get_cell_coordinates(self, img, scalev_optimal=40):
@@ -871,6 +887,42 @@ class BaseModule:
 
         return table_struc_stats
 
+    def check_if_centroid_inbetween_p1_p3(self, centroid, p1, p3):
+        if p1[0] <= centroid[0] <= p3[0] and p1[1] <= centroid[1] <= p3[1]:
+            return True
+        else:
+            return False
+
+    def calculate_centroid(self, p1, p3):
+        x_centroid = int((p1[0] + p3[0]) * 0.5)
+        y_centroid = int((p1[1] + p3[1]) * 0.5)
+        return x_centroid, y_centroid
+
+    def extract_spread(self):
+
+        h, w = self.original_image.shape[:2]
+        q1 = {'p1': [0, 0], 'p3': [int(w * 0.5), int(h * 0.5)]}
+        q2 = {'p1': [int(w * 0.5), 0], 'p3': [w, int(h * 0.5)]}
+        q3 = {'p1': [0, int(h * 0.5)], 'p3': [int(w * 0.5), h]}
+        #        q4 = {'p1':[int(w*0.5),int(h*0.5)] ,'p3' : [w, h]}
+
+        paras = self.paras
+        spread = {'q1': 0, 'q2': 0, 'q3': 0, 'q4': 0}
+        for para in paras:
+            for line in paras[para]:
+                for word in line:
+                    bb = word["boundingBox"]
+                    p_centroid = self.calculate_centroid(bb['p1'], bb['p3'])
+                    if self.check_if_centroid_inbetween_p1_p3(p_centroid, q1['p1'], q1['p3']):
+                        spread['q1'] += 1
+                    elif self.check_if_centroid_inbetween_p1_p3(p_centroid, q2['p1'], q2['p3']):
+                        spread['q2'] += 1
+                    elif self.check_if_centroid_inbetween_p1_p3(p_centroid, q3['p1'], q3['p3']):
+                        spread['q3'] += 1
+                    else:
+                        spread['q4'] += 1
+        return spread
+
     def fetch_metadata(self, table_area_dict, table_count_dict, order, analysis, rel_para_area, paras,
                        table_rel_centroid_dist_dict, table_cell_dict):
         page_metadata = {}
@@ -891,8 +943,10 @@ class BaseModule:
 
         if len(table_count_dict) == 0:
             page_metadata["words"] = self.extract_words(analysis)
+            page_metadata["spread"] = self.extract_spread()
         else:
             page_metadata["words"] = []
+            page_metadata["spread"] = {'q1': 0, 'q2': 0, 'q3': 0, 'q4': 0}
         page_metadata["no_of_tables"] = len(page_metadata["table"])
         page_metadata["total_relative_table_area"] = sum(table_area_dict.values())
 

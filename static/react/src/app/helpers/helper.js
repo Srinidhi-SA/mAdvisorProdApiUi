@@ -1,10 +1,10 @@
 import React from "react";
 import CircularProgressbar from 'react-circular-progressbar';
-import {Redirect} from 'react-router';
 import {handleDecisionTreeTable} from "../actions/signalActions";
-import renderHTML from 'react-render-html';
 import {API, STATIC_URL} from "./env";
-import {showLoading, hideLoading} from 'react-redux-loading-bar'
+import {showLoading, hideLoading} from 'react-redux-loading-bar';
+import { renderToString } from 'react-dom/server'
+import Scrollbars from "react-custom-scrollbars/lib/Scrollbars";
 
 function getHeader(token) {
   return {'Authorization': token, 'Content-Type': 'application/json'};
@@ -20,15 +20,6 @@ export function isEmpty(obj) {
 }
 
 var USERDETAILS = {};
-export function handleSignalToggleButton() {
-  if ($(".toggleOn").is(":visible")) {
-    $(".toggleOff").removeClass("hidden");
-    $(".toggleOn").addClass("hidden")
-  } else {
-    $(".toggleOn").removeClass("hidden");
-    $(".toggleOff").addClass("hidden")
-  }
-}
 
 export const getUserDetailsOrRestart = {
   get: function() {
@@ -50,7 +41,6 @@ export const getUserDetailsOrRestart = {
 function redirectToLogin() {
   var noOfUrls = window.history.length;
   window.history.go("-" + noOfUrls - 1);
-  //window.history.replaceState(null,null,"login");
 }
 
 const FILEUPLOAD = "fileUpload";
@@ -70,7 +60,6 @@ const NORMALTABLE = "normal";
 const CONFUSIONMATRIX = "confusionMatrix";
 const HEATMAPTABLE = "heatMap";
 const CIRCULARCHARTTABLE = "circularChartTable";
-const DECISIONTREETABLE = "decisionTreeTable"
 const DULOADERPERVALUE = -1;
 const CSLOADERPERVALUE = -1;
 const APPSLOADERPERVALUE = -1;
@@ -307,33 +296,10 @@ export function showHideSideTable(colstats) {
     $("#tab_statistics #pnl_stc").removeClass("in");
     $("#tab_statistics a").addClass("collapsed");
   } else {
-
     $("#tab_statistics #pnl_stc").addClass("in");
     $("#tab_statistics a").removeClass("collapsed");
     $("#tab_statistics #pnl_stc").removeAttr("style");
-
   }
-
-}
-
-export function showHideSubsetting(colType, subsetData, dateflag) {
-
-  if (dateflag == true || (colType == "dimension" && $.isEmptyObject(subsetData))) {
-    $(function() {
-      $("#tab_subsettings #pnl_tbset").removeClass("in");
-      $("#tab_subsettings a").addClass("collapsed");
-      $("#saveSubSetting").hide();
-    });
-  } else {
-    $(function() {
-      $("#tab_subsettings #pnl_tbset").addClass("in");
-      $("#tab_subsettings a").removeClass("collapsed");
-      $("#tab_subsettings #pnl_tbset").removeAttr("style");
-      $("#saveSubSetting").show();
-    });
-
-  }
-
 }
 
 export function decimalPlaces(number) {
@@ -373,7 +339,6 @@ export {
   CONFUSIONMATRIX,
   HEATMAPTABLE,
   CIRCULARCHARTTABLE,
-  DECISIONTREETABLE,
   DULOADERPERVALUE,
   CSLOADERPERVALUE,
   LOADERMAXPERVALUE,
@@ -470,7 +435,7 @@ export function renderC3ChartInfo(info) {
   if (!isEmpty(info)) {
 
     var listOfData = "";
-    info.map((item, index) => {
+    info.map((item) => {
       listOfData += "<p>" + item + "</p>";
     });
     bootbox.dialog({
@@ -495,14 +460,14 @@ export function bytesToSize(bytes) {
 export function downloadSVGAsPNG(chartClassId) {
   var nodeList = []
   var nodeList2 = []
-  var nodeList3 = []
+  var nodeList4 = []
   nodeList = document.querySelector("." + chartClassId + ">svg").querySelectorAll('.c3-chart .c3-chart-lines path');
   nodeList2 = document.querySelector("." + chartClassId + ">svg").querySelectorAll('.c3-axis path');
-  nodeList3 = document.querySelector("." + chartClassId + ">svg").querySelectorAll("svg text");
+  nodeList4 = document.querySelector("." + chartClassId + ">svg").querySelectorAll(".c3-title");
 
   var line_graph = Array.from(nodeList);
-  var x_and_y = Array.from(nodeList2); //.concat(Array.from(nodeList2));
-  var labels = Array.from(nodeList3)
+  var x_and_y = Array.from(nodeList2);
+  var titles = Array.from(nodeList4);
 
   line_graph.forEach(function(element) {
     element.style.fill = "none";
@@ -511,16 +476,15 @@ export function downloadSVGAsPNG(chartClassId) {
     element.style.fill = "none";
     element.style.stroke = "black";
   });
-  labels.forEach(function(element) {
-    element.style.fontSize = "12px"
+  titles.forEach(function(element){
+    element.setAttribute("x",parseFloat(element.getAttribute("x"))+25)
   })
   saveSvgAsPng(document.querySelector("." + chartClassId + ">svg"), "chart.png", {
     backgroundColor: "white",
-    height: "500"
+    height: parseFloat(document.querySelector("." + chartClassId + ">svg").getAttribute("height"))+20
   });
 
 }
-//return status msg html string, msg_type can be error, warning,or info.mascot_type will be small_mascot,large_mascot or without_mascot
 export function statusMessages(msg_type, msg, mascot_type) {
   let imgsrc_url = ""
   let status_text = ""
@@ -552,37 +516,18 @@ export function statusMessages(msg_type, msg, mascot_type) {
   }
   if (mascot_type == "without_mascot") {
     htmlString = '<div class="border border-danger"><h4 class="alert-heading">Error !</h4><p>' + msg + '</p></div>'
-  } else {
+  }else if(mascot_type ==="failed_mascot"){
+    let strng = renderToString(<Scrollbars autoHeight autoHeightMax={275} autoHide={false}
+      renderTrackHorizontal={props => <div {...props} className="track-horizontal" style={{display:"none"}}/>} 
+      renderThumbHorizontal={props => <div {...props} className="thumb-horizontal" style={{display:"none"}}/>}>
+      {msg}</Scrollbars>)
+    htmlString = '<div class="row" style="display:flex"><div class="col-md-4" style="display: flex"><img src=' + imgsrc_url + ' class="img-responsive" style="margin:auto"/></div><div class="col-md-8">'+status_text+'<p>'+strng+'</p></div></div>'
+  }else {
     htmlString = '<div class="row"><div class="col-md-4"><img src=' + imgsrc_url + ' class="img-responsive" /></div><div class="col-md-8">' + status_text + '<p>' + msg + '</p></div></div>';
   }
   return htmlString
 }
-export function toggleVisualization(slug, actionsData) {
-  let flag = true;
-  let transformationSettings = actionsData;
-  $.each(transformationSettings, function(key, val) {
-    if (val.slug == slug) {
-      $.each(val.columnSetting, function(key1, val1) {
-        if (val1.actionName == IGNORE_SUGGESTION && val1.status == true)
-          flag = false;
-        }
-      );
-    }
-  });
-  if (flag == false) {
-    $(function() {
-      $("#tab_visualizations #pnl_visl").removeClass("in");
-      $("#tab_visualizations a").addClass("collapsed");
-    });
-  } else {
-    $(function() {
-      $("#tab_visualizations #pnl_visl").addClass("in");
-      $("#tab_visualizations a").removeClass("collapsed");
-      $("#tab_visualizations #pnl_visl").removeAttr("style");
-    });
-  }
 
-}
 
 export function removeChatbotOnLogout() {
   var tags = document.getElementsByTagName('script');
@@ -628,3 +573,45 @@ export function getRemovedVariableNames(dataset){
     return arr;
 
 }
+
+export function FocusSelectErrorFields(){
+  var selectBoxList=[ "loss_pt",  "reduction_pt", "zero_infinity_pt",  "log_input_pt",
+   "full_pt", "amsgrad_pt", "nesterov_pt", "line_search_fn_pt","centered_pt",
+   "optimizer_pt","regularizer_pt","affine_pt","track_running_stats_pt","bias_pt",
+   "add_bias_kv_pt","add_zero_attn_pt","head_bias_pt",
+   "mode_pt" ,"nonlinearity_pt", "bias_init_pt", "weight_init_pt","num_parameters_pt"] // "dropout_pt" 
+  var selectBoxError=false
+    for(var i=0;i<selectBoxList.length;i++){
+       if(($("."+selectBoxList[i])[0] != undefined) && ($("."+selectBoxList[i]+" option:selected").text().toLowerCase().includes("--select--"))){
+       document.getElementsByClassName(selectBoxList[i])[0].classList.add('regParamFocus')
+       selectBoxError=true
+       }
+    }
+  return selectBoxError
+}
+
+export function FocusInputErrorFields(){
+   var inputsError=false
+   var inputFileds=["blank_pt","rho_pt","lr_pt","lr_decay_pt","weight_decay_pt"
+   ,"eps_pt","max_iter_pt","max_eval_pt","tolerance_grad_pt","tolerance_change_pt","dampening_pt","lambd_pt",
+   "alpha_pt","t0_pt","history_size_pt","betas1_pt","betas2_pt","eta1_pt","eta2_pt","step_sizes1_pt",
+   "step_sizes2_pt","l1_decay_pt","l2_decay_pt","min_val_pt","max_val_pt","negative_slope_pt","kdim_pt",
+   "vdim_pt","init_pt","lower_pt","upper_pt","p_pt","beta_pt","threshold_pt","value_pt","div_value_pt","val_pt",
+   "mean_pt","std_pt","gain_pt","a_pt","sparsity_pt","std_pt","dropout_pt","lower_bound_pt","upper_bound_pt"
+   ,"input_unit_pt","output_unit_pt"
+   ]
+
+   for(var i=0;i<inputFileds.length;i++){
+       if($("."+inputFileds[i])[0] != undefined && (($("."+inputFileds[i])[0]).value === "" || $("."+inputFileds[i])[0].value === undefined)){
+       document.getElementsByClassName(inputFileds[i])[0].classList.add('regParamFocus')
+       inputsError=true
+       }
+   }
+   return inputsError
+}
+
+export function setDateFormatHelper(created_at){
+  let date = new Date( Date.parse(created_at) );
+  let fomattedDate=date.toLocaleString('default', { month: 'short' })+" "+date.getDate()+","+date.getFullYear()+" "+(date.getHours() < 10 ? '0' : '')+date.getHours()+':'+(date.getMinutes() < 10 ? '0' : '')+date.getMinutes()
+ return fomattedDate
+ }

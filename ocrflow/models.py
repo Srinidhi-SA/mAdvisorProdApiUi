@@ -18,7 +18,7 @@ from ocrflow.forms import ApprovalForm
 from ocrflow import process
 from singleton_model import SingletonModel
 
-class OCRRules(SingletonModel):
+class OCRRules(models.Model):
     auto_assignmentL1 = models.BooleanField(default=False)
     auto_assignmentL2 = models.BooleanField(default=False)
     rulesL1 = models.TextField(max_length=3000, default={}, null=True, blank=True)
@@ -28,9 +28,13 @@ class OCRRules(SingletonModel):
         blank=True,
         auto_now_add=True
     )
+    created_by = models.ForeignKey(User,blank=True, null=True)
+
+    def __str__(self):
+        return " : ".join(["{}".format(x) for x in ["OCRRule", self.created_by]])
 
     def save(self, *args, **kwargs):
-        self.pk = 1
+        """Save OCRRules model"""
         super(OCRRules, self).save(*args, **kwargs)
 
 class Task(models.Model):
@@ -138,6 +142,7 @@ class SimpleFlow(models.Model):
             Reviewers_queryset = User.objects.filter(
                 groups__name=state['group'],
                 is_active=True,
+                ocruserprofile__supervisor=self.rule.created_by,
                 ocruserprofile__is_active=True).order_by('?')
         else:
             Reviewers_queryset = User.objects.filter(
@@ -182,39 +187,136 @@ class SimpleFlow(models.Model):
         group = Group.objects.get(name=state['group'])
         content_type = ContentType.objects.get_for_model(self)
 
+        #---------------------  Fetch OCR Rule ------------------------
         if initial == 'initial':
             rules = json.loads(self.rule.rulesL1)
         else:
             rules = json.loads(self.rule.rulesL2)
+        #--------------------------------------------------------------
+
+        #---------------   Check for reviewer availability ------------
         if rules['auto']['active'] == "True":
             reviewer = self.assigned_user(initial, state, rules)
         else:
             usersList = rules['custom']['selected_reviewers']
             reviewer = self.assigned_user(initial, state, rules, users=usersList)
-        if reviewer is None:
-            print("No Reviewers available. Moving to backlog")
-            pass
-        else:
-            Task.objects.create(
-                name=state['name'],
-                slug=initial,
-                assigned_group=group,
-                assigned_user=reviewer,
-                content_type=content_type,
-                object_id=self.id
-            )
-            imageObject=OCRImage.objects.get(id=self.ocr_image.id)
-            if initial == 'initial':
-                imageObject.is_L1assigned = True
-                imageObject.status='ready_to_verify(L1)'
+        #--------------------------------------------------------------
+
+        #------------------ Assignment based on doc_type --------------
+        if self.doc_type == 'pdf':
+
+            if reviewer is not None:
+                pdfObject = OCRImage.objects.get(id=self.ocr_image.id)
+                pages_queryset = OCRImage.objects.filter(
+                    identifier=pdfObject.identifier,
+                    doctype = 'pdf_page'
+                )
+                for page in pages_queryset:
+                    object = ReviewRequest.objects.create(
+                                ocr_image = page,
+                                created_by = page.created_by,
+                                rule = self.rule,
+                                doc_type = 'pdf_page'
+                            )
+                    taskObj = Task.objects.create(
+                                name=state['name'],
+                                slug=initial,
+                                assigned_group=group,
+                                assigned_user=reviewer,
+                                content_type=ContentType.objects.get_for_model(object),
+                                object_id=object.id
+                            )
+                    if initial == 'initial':
+                        #--------Update Review status--------
+                        object.status='submitted_for_review(L1)'
+                        #------Update OCR Image Object-------
+                        page.is_L1assigned = True
+                        page.status='ready_to_verify(L1)'
+                        page.assignee=reviewer
+                        page.l1_assignee=reviewer
+                        #----------Save changes---------
+                        object.save()
+                        page.save()
+
+                        print("Task assigned:  {0}  -  User:  {1}".format(page.name, taskObj.assigned_user))
+                #-----------Update PDF OCR Object -----------
+                pdfObject.is_L1assigned = True
+                pdfObject.status='ready_to_verify(L1)'
+                pdfObject.assignee=reviewer
+                pdfObject.l1_assignee=reviewer
                 self.status='submitted_for_review(L1)'
+                #------ Save changes -------
+                pdfObject.save()
+                self.save()
+
             else:
-                imageObject.is_L2assigned = True
-                imageObject.status='ready_to_verify(L2)'
-                self.status='submitted_for_review(L2)'
-            imageObject.assignee=reviewer
-            imageObject.save()
-            self.save()
+                print("No Reviewers available. Moving to backlog")
+                pass
+
+        elif self.doc_type == 'pdf_page':
+            if reviewer is not None:
+                if initial == 'RL2_approval':
+                    #Fetch OCRImage with PDF
+                    pdfObject = OCRImage.objects.get(
+                        identifier=self.ocr_image.identifier,
+                        doctype='pdf')
+
+                    if pdfObject.is_L2assigned == False:
+                       pdfObject.assignee = reviewer
+                       pdfObject.is_L2assigned = True
+                       pdfObject.status='ready_to_verify(L2)'
+                       pdfObject.save()
+                       #Update PDF Review Object
+                       revObject = ReviewRequest.objects.get(ocr_image=pdfObject)
+                       revObject.status = 'submitted_for_review(L2)'
+                       revObject.save()
+
+                    Task.objects.create(
+                        name=state['name'],
+                        slug=initial,
+                        assigned_group=group,
+                        assigned_user=pdfObject.assignee,
+                        content_type=content_type,
+                        object_id=self.id
+                    )
+                    #Update Pdf_page and corresponding review object
+                    imageObject=OCRImage.objects.get(id=self.ocr_image.id)
+                    imageObject.is_L2assigned = True
+                    imageObject.status='ready_to_verify(L2)'
+                    imageObject.assignee=pdfObject.assignee
+                    self.status='submitted_for_review(L2)'
+                    imageObject.save()
+                    self.save()
+            else:
+                print("No Reviewers available. Moving to backlog")
+                pass
+        else:
+            if reviewer is not None:
+                Task.objects.create(
+                    name=state['name'],
+                    slug=initial,
+                    assigned_group=group,
+                    assigned_user=reviewer,
+                    content_type=content_type,
+                    object_id=self.id
+                )
+                imageObject=OCRImage.objects.get(id=self.ocr_image.id)
+                if initial == 'initial':
+                    imageObject.is_L1assigned = True
+                    imageObject.status='ready_to_verify(L1)'
+                    imageObject.assignee=reviewer
+                    imageObject.l1_assignee=reviewer
+                    self.status='submitted_for_review(L1)'
+                else:
+                    imageObject.is_L2assigned = True
+                    imageObject.status='ready_to_verify(L2)'
+                    imageObject.assignee=reviewer
+                    self.status='submitted_for_review(L2)'
+                imageObject.save()
+                self.save()
+            else:
+                print("No Reviewers available. Moving to backlog")
+                pass
 
 class ReviewRequest(SimpleFlow):
     # assign your process here
@@ -254,6 +356,16 @@ class ReviewRequest(SimpleFlow):
             ('reviewerL1_reviewed', 'ReviewerL1 Reviewed'),
             ('reviewerL1_rejected', 'ReviewerL1 Rejected'),
         ]
+    )
+    doc_type = models.CharField(
+        max_length=40,
+        blank=True,
+        null=True,
+        choices=[
+            ('pdf', 'PDF'),
+            ('pdf_page', 'PDF PAGE'),
+            ('image', 'IMAGE'),
+        ],
     )
     def save(self, *args, **kwargs):
         """Save OCRUserProfile model"""

@@ -11,7 +11,7 @@ import {updateCurrentAppByID, updateModelSummaryFlag, updateScoreSummaryFlag} fr
 @connect((store) => {
   return {currentAppId: store.apps.currentAppId, currentAppDetails: store.apps.currentAppDetails};
 })
-//this will redirect the regression app to trainer app list, mainly done to get slug
+
 export class RegressionAppList extends React.Component {
   constructor(props) {
     super(props);
@@ -28,9 +28,7 @@ export class RegressionAppList extends React.Component {
     if (this.props.match.url.indexOf("scores") != -1)
       app_page = "scores"
     if (this.props.currentAppDetails != null) {
-      let url = "/apps/" + this.props.currentAppDetails.slug + "/" + app_page
-      return (<Redirect to ={url}/>)
-
+      return ( <Redirect to ={`/apps/${this.props.currentAppDetails.slug}/${app_page}`} />)
     } else {
       return (
         <div className="side-body"></div>

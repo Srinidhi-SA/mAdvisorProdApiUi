@@ -6,7 +6,7 @@ import { STATIC_URL } from "../../../helpers/env.js";
 import { Scrollbars } from 'react-custom-scrollbars';
 import store from "../../../store";
 import { open, close } from "../../../actions/dataUploadActions";
-import {getOcrUploadedFiles, saveS3BucketDetails, getS3BucketFileList, setS3Loader, saveS3SelFiles, uploadS3Files, clearS3Data, uploadS3FileSuccess} from '../../../actions/ocrActions'
+import {getOcrUploadedFiles, saveS3BucketDetails, getS3BucketFileList, setS3Loader, saveS3SelFiles, uploadS3Files, clearS3Data, uploadS3FileSuccess, hideS3Modal} from '../../../actions/ocrActions'
 import {MultiSelect} from "primereact/multiselect";
 import { API } from "../../../helpers/env";
 import ReactTooltip from 'react-tooltip';
@@ -31,12 +31,14 @@ import ReactTooltip from 'react-tooltip';
 export class OcrUpload extends React.Component {
   constructor(props) {
     super(props);
+    this.fileSizeFlag;
     // this.props.dispatch(close());
     this.state = {
       selectedFiles: "",
       uploaded: false,
       loader: false,
       s3FileList1:[],
+      hideModalFlag: false
     }
   }
 
@@ -44,33 +46,6 @@ export class OcrUpload extends React.Component {
     return { Authorization: token };
   };
 
-  componentDidUpdate(){
-    if(this.props.s3FileFetchSuccessFlag && !this.props.s3FileFetchErrorFlag){
-      $("#fetchS3FileBtn").hide()
-      document.getElementById("dataCloseBtn").disabled = false
-    } else {
-      $("#fetchS3FileBtn").show()
-    }
-    if(this.props.s3Uploaded){
-      document.getElementById("resetMsg").innerText = "";
-    }
-    let activeId = $(".ocrFileTab").find(".active")[0].innerText;
-    if(activeId === "UPLOAD LOCAL FILE" && this.state.uploaded){
-      document.getElementById("loadDataBtn").disabled = false
-      $("#hideUploadBtn").hide();
-    }else if(activeId === "UPLOAD LOCAL FILE" && this.state.loader && !this.state.uploaded){
-      $("#hideUploadBtn").show();
-    }else if(activeId === "AMAZON S3 BUCKET" && this.props.s3Uploaded){
-      $("#dataCloseBtn").hide();
-      document.getElementById("loadDataBtn").disabled = false
-      $("#hideUploadBtn").hide();
-    }else if(activeId === "AMAZON S3 BUCKET" && this.props.s3Loader && !this.props.s3Uploaded && !(this.props.s3FileList === "")){
-      $("#hideUploadBtn").show();
-    }else{
-      document.getElementById("loadDataBtn").disabled = true
-      $("#hideUploadBtn").hide();
-    }
-  }
   openPopup() {
     this.setState({
       selectedFiles: "",
@@ -88,6 +63,7 @@ export class OcrUpload extends React.Component {
 
   onDrop = event => {
     document.getElementById("resetMsg").innerText = "";
+    document.getElementById("allUploadFail").innerText="";
     var allowType = ['image/png', 'image/jpeg', 'image/jpg', 'image/tif','application/pdf']
     var formatErr = Object.values(event.target.files).map(i => i.type).map((i, ind) => {
       return allowType.includes(i)
@@ -102,8 +78,13 @@ export class OcrUpload extends React.Component {
 
   removeFile(item) {
     this.setState({
-      selectedFiles: Object.values(this.state.selectedFiles).filter(i => i.name != item),
-    })
+      selectedFiles: Object.values(this.state.selectedFiles).filter(i => i.name != item)
+    },()=>{
+      if (this.state.selectedFiles==""){
+        document.getElementById("allUploadFail").innerText="";
+      }
+    }
+    )
   }
 
   saveS3Details(e){
@@ -127,7 +108,6 @@ export class OcrUpload extends React.Component {
       document.getElementById("resetMsg").innerText = "Please Enter Secret Key";
       return false;
     }else{
-      $("#fetchS3FileBtn").hide();
       document.getElementById("resetMsg").innerText = "";
       this.props.dispatch(setS3Loader(true));
       this.props.dispatch(getS3BucketFileList(this.props.ocrS3BucketDetails));
@@ -137,12 +117,23 @@ export class OcrUpload extends React.Component {
   handleSubmit(acceptedFiles) {
     let activeId = $(".ocrFileTab").find(".active")[0].innerText;
     let projectSlug= this.props.projectslug;
+    this.fileSizeFlag= false;
 
     if(activeId === "UPLOAD LOCAL FILE"){
       if (acceptedFiles.length == 0) {
         document.getElementById("resetMsg").innerText = "Please select files to upload.";
         return false
       }
+      acceptedFiles.map(i=>{
+        if(i.size >= 20000000){
+          document.getElementById("resetMsg").innerText="Please select file with less than 20MB.";
+          this.fileSizeFlag=true
+        }
+      })
+
+    if(!this.fileSizeFlag){
+      document.getElementById("resetMsg").innerText = "";
+      document.getElementById("allUploadFail").innerText="";
       $("#dataCloseBtn").hide()
       this.setState({ loader: true })
       $("#hideUploadBtn").show();
@@ -157,24 +148,35 @@ export class OcrUpload extends React.Component {
       headers: this.getHeader(getUserDetailsOrRestart.get().userToken),
       body: data
     }).then(response => response.json()).then(json => {
-      if (json.message === "SUCCESS")
+      if (json.message === "SUCCESS" && json.invalid_files== 0){
+        this.state.hideModalFlag?this.setState({hideModalFlag:false}):this.setState({ uploaded: true })
+      }
+      else if(json.serializer_data.length==0){
+        $("#dataCloseBtn").show()
+        this.setState({ loader: false })
+        document.getElementById("allUploadFail").innerText=`Upload failed for the selected files as ${json.invalid_files[0].message}`;
+      }
+      else if(json.invalid_files.length > 0 && json.serializer_data.length > 0){
         this.setState({ uploaded: true })
+        document.getElementById("uploadError").innerText=`Upload failed for ${json.invalid_files.map(i=>i.image).toString()} as ${json.invalid_files[0].message}`;
+      }
+
     })
+  }
     }
     else if(activeId === "AMAZON S3 BUCKET"){
       if($(".p-multiselect-label")[0].innerHTML === "Choose"){
         document.getElementById("resetMsg").innerText = "Please select files to upload.";
         return false
       }
-      document.getElementById("resetMsg").innerText = "";
-      $("#dataCloseBtn").hide()
-      $("#hideUploadBtn").show();
       this.props.dispatch(setS3Loader(true));
       this.props.dispatch(uploadS3Files(this.props.s3SelFileList,projectSlug));
     }
   }
  hideModel=()=>{
   this.closePopup();
+  this.setState({hideModalFlag:true});
+  this.props.dispatch(hideS3Modal(true));
   var refreshList=setInterval(() =>{
   this.props.dispatch(getOcrUploadedFiles());
   if(store.getState().ocr.tabActive=='active'){
@@ -212,6 +214,7 @@ export class OcrUpload extends React.Component {
       }
     }
     else if(e.target.id === "ocrS3Tab"){
+      $("#fetchS3FileBtn").show();
       $("#dataCloseBtn").show();
       document.getElementById("loadDataBtn").disabled = true;
       document.getElementById("dataCloseBtn").disabled = true;
@@ -219,8 +222,9 @@ export class OcrUpload extends React.Component {
         $("#dataCloseBtn").show();
         document.getElementById("loadDataBtn").disabled = true;
       }
-      else if(this.props.s3Uploaded && this.props.s3FileFetchSuccessFlag && this.props.s3Loader){
+      else if(this.props.s3Uploaded && !this.props.s3FileFetchSuccessFlag && this.props.s3Loader){
         this.props.dispatch(setS3Loader(false));
+        $("#dataCloseBtn").hide();
         document.getElementById("loadDataBtn").disabled = false;
       }
       else if(this.props.s3Uploaded && !this.props.s3Loader){
@@ -228,20 +232,68 @@ export class OcrUpload extends React.Component {
         $("#dataCloseBtn").show();
         document.getElementById("loadDataBtn").disabled = true;
       }else if(this.props.s3FileFetchSuccessFlag){
+        $("#fetchS3FileBtn").hide();
         document.getElementById("dataCloseBtn").disabled = false;
       }
     }
   }
 
   render() {
-    var fileNames = this.state.selectedFiles != "" ? Object.values(this.state.selectedFiles).map(i => i.name).map((item, index) => (
-      <li>{item}
-        <span style={{ marginLeft: "15px" }} onClick={this.removeFile.bind(this, item)}>
-          <i class="fa fa-times" aria-hidden="true" style={{ color: '#555', cursor: 'pointer' }}></i>
+    let fetchBtnVal = "none";
+    let hideBtnVal = "none";
+    let uploadBtn = true;
+    let uploadBtnstyle = "";
+    let proceedBtn = true;
+
+    if(this.props.showModal){
+      let activeId = ($(".ocrFileTab").find(".active")[0] !=undefined)?$(".ocrFileTab").find(".active")[0].innerText:"UPLOAD LOCAL FILE"
+      if(activeId === "UPLOAD LOCAL FILE"){
+        if(this.state.uploaded){
+          proceedBtn = false
+          hideBtnVal = "none"
+        }else if(this.state.loader && !this.state.uploaded){
+          hideBtnVal = ""
+        }else{
+          hideBtnVal = "none"
+          uploadBtn = false
+          proceedBtn = true
+        }
+      }else if(activeId === "AMAZON S3 BUCKET"){
+        if(this.props.s3Uploaded){
+          uploadBtnstyle = "none"
+          proceedBtn = false
+          hideBtnVal = "none"
+        }else if(this.props.s3Loader && !this.props.s3Uploaded && !(this.props.s3FileList === "")){
+          hideBtnVal = ""
+          uploadBtnstyle = "none"
+        }else if(this.props.s3FileFetchSuccessFlag && !this.props.s3FileFetchErrorFlag){
+          fetchBtnVal = "none"
+          uploadBtn = false
+          hideBtnVal = "none"
+        }else{
+          fetchBtnVal = ""
+          uploadBtn = true
+          proceedBtn = true
+          hideBtnVal = "none"
+        }
+      }
+    }
+
+    let errorMsg = ""
+    if(this.props.s3FileFetchErrorFlag && !this.props.s3Uploaded){
+      errorMsg = this.props.s3FileFetchErrorMsg;
+    }else if(this.props.s3FileUploadErrorFlag){
+      errorMsg = this.props.s3FileFetchErrorMsg;
+    }
+
+    var fileNames = this.state.selectedFiles != "" ? Object.values(this.state.selectedFiles).map((item, index) => (
+      <li key={index}>{item.name} -{item.size/1000} KB
+        <span className="xs-ml-15" onClick={this.removeFile.bind(this, item.name)}>
+          <i className="fa fa-times" aria-hidden="true" style={{ color: '#555', cursor: 'pointer' }}></i>
         </span>
       </li>
     ))
-      : <div style={{textAlign:"center",paddingLeft:"20px"}}>No files chosen.<br/>Please select file to proceed.</div>
+      : <div className="xs-pl-20 text-center">No files chosen.<br/>Please select file to proceed.</div>
     let optionsTemp = [];
     for(var i=0; i<this.props.s3FileList.length; i++){
       optionsTemp.push({"value":this.props.s3FileList[i],"label":this.props.s3FileList[i]});
@@ -251,8 +303,8 @@ export class OcrUpload extends React.Component {
       <div style={{ display:"inline-block" }}>
       <ReactTooltip place="top" type="light"/> 
       {this.props.uploadMode == 'topPanel'?
-      <Button bsStyle="primary" onClick={this.openPopup.bind(this)} data-tip="Upload Documents" ><i class="fa fa-upload"></i></Button>:
-      <div class="icon " onClick={this.openPopup.bind(this)}><i  class="fa fa-upload fa-2x xs-mt-10"></i></div>}
+      <Button bsStyle="primary" onClick={this.openPopup.bind(this)} data-tip="Upload Documents" ><i className="fa fa-upload"></i></Button>:
+      <div className="icon " onClick={this.openPopup.bind(this)}><i  className="fa fa-upload fa-2x xs-mt-10"></i></div>}
  
         <div id="uploadData" role="dialog" className="modal fade modal-colored-header">
           <Modal show={store.getState().dataUpload.dataUploadShowModal} onHide={this.closePopup.bind(this)} dialogClassName="modal-colored-header ocrUploadModal" backdrop="static">
@@ -260,15 +312,15 @@ export class OcrUpload extends React.Component {
               <h3 className="modal-title">Upload Data</h3>
             </Modal.Header>
 
-            <Modal.Body style={{ padding:"0px"}} >
+            <Modal.Body className="xs-p-0">
               <div className="tab-container ocrFileTab">
                   <ul className="ocrUploadTabs nav-tab" onClick={this.getTabContent.bind(this)}>
                     <li className="active"><a className="nav-link" data-toggle="tab" href="#ocrImage" id="ocrImageTab">Upload Local File</a></li>
                     <li><a className="nav-link" data-toggle="tab" href="#ocrS3" id="ocrS3Tab">Amazon S3 Bucket</a></li>
                   </ul>
               </div>
-              <div className="tab-content" style={{padding:"0px"}}>
-                <div id="ocrImage" className="tab-pane active row" style={{margin:"0px"}}>
+              <div className="tab-content xs-p-0">
+                <div id="ocrImage" className="tab-pane active row xs-m-0">
                   {!this.state.uploaded &&
                     <div>
                       <div className="col-md-5 ocrUploadHeight">
@@ -285,6 +337,7 @@ export class OcrUpload extends React.Component {
                           </ul>
                         </Scrollbars>
                       </div>
+                      <div id="allUploadFail" style={{color:'#ff0000',padding:10}}></div>
                     </div>
                   }
 
@@ -299,7 +352,8 @@ export class OcrUpload extends React.Component {
                       <img className="wow bounceIn" data-wow-delay=".75s" data-wow-offset="20" data-wow-duration="5s" data-wow-iteration="10" src={STATIC_URL + "assets/images/success_outline.png"} style={{ height: 105, width: 105 }} />
 
                       <div className="wow bounceIn" data-wow-delay=".25s" data-wow-offset="20" data-wow-duration="5s" data-wow-iteration="10">
-                        <span style={{ paddingTop: 10, color: 'rgb(50, 132, 121)', display: 'block' }}>Uploaded Successfully</span></div>
+                        <span className="xs-pt-10" style={{ color: 'rgb(50, 132, 121)', display: 'block' }}>Uploaded Successfully</span></div>
+                    <div id="uploadError" style={{position:'absolute',bottom:0,padding:'10px 10px 0px 10px',textAlign:'center'}}></div>
                     </div>
                   }
                 </div>
@@ -328,14 +382,14 @@ export class OcrUpload extends React.Component {
                             </div>
                         }
                         <ReactTooltip place="top" type="light"/> 
-                        <Button id="fetchS3FileBtn" bsStyle="default" onClick={this.validateAndFetchS3Files.bind(this)} data-tip="Please click here to get files"><i class="fa fa-files-o"></i> Fetch Files</Button>
+                        <Button id="fetchS3FileBtn" bsStyle="default" onClick={this.validateAndFetchS3Files.bind(this)} data-tip="Please click here to get files" style={{display:fetchBtnVal}}><i className="fa fa-files-o"></i> Fetch Files</Button>
                     </div>
                   }
                   {this.props.s3Uploaded &&
                     <div className="col-md-12 ocrSuccess">
                     <img className="wow bounceIn" data-wow-delay=".75s" data-wow-offset="20" data-wow-duration="5s" data-wow-iteration="10" src={STATIC_URL + "assets/images/success_outline.png"} style={{ height: 105, width: 105 }} />
                     <div className="wow bounceIn" data-wow-delay=".25s" data-wow-offset="20" data-wow-duration="5s" data-wow-iteration="10">
-                      <span style={{ paddingTop: 10, color: 'rgb(50, 132, 121)', display: 'block' }}>Uploaded Successfully</span></div>
+                      <span  className="xs-pt-10" style={{color: 'rgb(50, 132, 121)', display: 'block' }}>Uploaded Successfully</span></div>
                   </div>
                   }
                 </div>
@@ -347,12 +401,10 @@ export class OcrUpload extends React.Component {
             </div>
             </Modal.Body>
             <Modal.Footer>
-              <div id="resetMsg">
-              {this.props.s3FileFetchErrorFlag ?this.props.s3FileFetchErrorMsg:""}
-              </div>
-              <Button id="hideUploadBtn" bsStyle="primary" onClick={this.hideModel}>Hide</Button>
-              <Button id="dataCloseBtn" bsStyle="primary" onClick={this.handleSubmit.bind(this, this.state.selectedFiles)}>Upload Data</Button>
-              <Button id="loadDataBtn" bsStyle="primary" onClick={this.proceedClick.bind(this)} >Proceed</Button>
+              <div id="resetMsg">{errorMsg}</div>
+              <Button id="hideUploadBtn" bsStyle="primary" onClick={this.hideModel} style={{display:hideBtnVal}}>Hide</Button>
+              <Button id="dataCloseBtn" bsStyle="primary" onClick={this.handleSubmit.bind(this, this.state.selectedFiles)} disabled={uploadBtn} style={{display:uploadBtnstyle}}>Upload Data</Button>
+              <Button id="loadDataBtn" bsStyle="primary" onClick={this.proceedClick.bind(this)} disabled={proceedBtn}>Proceed</Button>
             </Modal.Footer>
           </Modal>
         </div>

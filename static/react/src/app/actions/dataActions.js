@@ -2,16 +2,17 @@ import React from "react";
 import {API,STATIC_URL} from "../helpers/env";
 import {PERPAGE,DULOADERPERVALUE,DEFAULTINTERVAL,SUCCESS,FAILED,getUserDetailsOrRestart,DEFAULTANALYSISVARIABLES,statusMessages} from "../helpers/helper";
 import store from "../store";
-import {dataPreviewInterval,dataUploadLoaderValue,clearLoadingMsg,clearDatasetPreview} from "./dataUploadActions";
-import {closeAppsLoaderValue,openAppsLoaderValue} from "./appActions";
+import {dataUploadLoaderValue,clearLoadingMsg} from "./dataUploadActions";
+import {closeAppsLoaderValue,getAppsStockList,openAppsLoaderValue,saveSelectedValuesForModel} from "./appActions";
+import {resetSelectedTargetVariable,updateVariablesCount} from "./signalActions";
 import renderHTML from 'react-render-html';
 import Dialog from 'react-bootstrap-dialog';
 import { showLoading, hideLoading } from 'react-redux-loading-bar';
-import {isEmpty,RENAME,DELETE,REPLACE,DATA_TYPE,REMOVE,CURRENTVALUE,NEWVALUE,SET_VARIABLE,UNIQUE_IDENTIFIER,SET_POLARITY,handleJobProcessing,IGNORE_SUGGESTION} from "../helpers/helper";
-import {updateVariablesCount} from "./signalActions";
-import Notifications, {notify} from 'react-notify-toast';
-let refDialogBox = "";
+import {RENAME,DELETE,REPLACE,DATA_TYPE,REMOVE,CURRENTVALUE,NEWVALUE,SET_VARIABLE,UNIQUE_IDENTIFIER,SET_POLARITY,handleJobProcessing,IGNORE_SUGGESTION} from "../helpers/helper";
+import {notify} from 'react-notify-toast';
+
 var refreshDatasetsInterval = null;
+
 function getHeader(token){
     return {
         'Authorization': token,
@@ -19,15 +20,17 @@ function getHeader(token){
     };
 }
 
-export function refreshDatasets(props){
+export function refreshDatasets(){
     return (dispatch) => {
         if(refreshDatasetsInterval != null)
-        clearInterval(refreshDatasetsInterval);
+            clearInterval(refreshDatasetsInterval);
         refreshDatasetsInterval = setInterval(function() {
             var pageNo = window.location.href.split("=").pop();
             if(isNaN(pageNo)) pageNo = 1;
-            if(window.location.pathname == "/data")
+            let dataLst = store.getState().datasets.dataList.data
+            if(window.location.pathname == "/data" && dataLst!=undefined && dataLst.filter(i=> (i.status!="SUCCESS" && i.status!="FAILED" && i.completed_percentage!=100) ).length != 0 ){
                 dispatch(getDataList(parseInt(pageNo)));
+            }
         },DEFAULTINTERVAL);
     }
 }
@@ -35,10 +38,10 @@ export function getDataList(pageNo) {
 	return (dispatch) => {
 		return fetchDataList(pageNo,getUserDetailsOrRestart.get().userToken,dispatch).then(([response, json]) =>{
 			if(response.status === 200){
-				dispatch(hideLoading())
+                dispatch(hideLoading())
+                dispatch(paginationFlag(false))
 				dispatch(fetchDataSuccess(json))
-			}
-			else{
+			}else{
 				dispatch(fetchDataError(json))
 				dispatch(hideLoading())
 			}
@@ -46,42 +49,18 @@ export function getDataList(pageNo) {
 	}
 }
 
-function fetchDataList(pageNo,token,dispatch) {
-
+function fetchDataList(pageNo,token) {
 	let search_element = store.getState().datasets.data_search_element;
 	let data_sorton =  store.getState().datasets.data_sorton;
-	let data_sorttype = store.getState().datasets.data_sorttype;
+    let data_sorttype = store.getState().datasets.data_sorttype;
 	if(data_sorttype=='asc')
 		data_sorttype = ""
-			else if(data_sorttype=='desc')
-				data_sorttype="-"
-					if(search_element!=""&&search_element!=null){
-						if((data_sorton!=""&& data_sorton!=null) && (data_sorttype!=null))
-						{
-							return fetch(API+'/api/datasets/?name='+search_element+'&sorted_by='+data_sorton+'&ordering='+data_sorttype+'&page_number='+pageNo+'&page_size='+PERPAGE+'',{
-								method: 'get',
-								headers: getHeader(token)
-							}).then( response => Promise.all([response, response.json()]));
-						}else{
-						return fetch(API+'/api/datasets/?name='+search_element+'&page_number='+pageNo+'&page_size='+PERPAGE+'',{
-							method: 'get',
-							headers: getHeader(token)
-						}).then( response => Promise.all([response, response.json()]));
-					}
-					}else if((data_sorton!=""&& data_sorton!=null) && (data_sorttype!=null)){
-						dispatch(showLoading())
-						return fetch(API+'/api/datasets/?sorted_by='+data_sorton+'&ordering='+data_sorttype+'&page_number='+pageNo+'&page_size='+PERPAGE+'',{
-							method: 'get',
-							headers: getHeader(token)
-						}).then( response => Promise.all([response, response.json()]));
-					}else{
-						return fetch(API+'/api/datasets/?page_number='+pageNo+'&page_size='+PERPAGE+'',{
-							method: 'get',
-							headers: getHeader(token)
-						}).then( response => Promise.all([response, response.json()]));
-					}
-
-
+    else if(data_sorttype=='desc')
+        data_sorttype="-"
+    return fetch(API+'/api/datasets/?name='+search_element+'&sorted_by='+data_sorton+'&ordering='+data_sorttype+'&page_number='+pageNo+'&page_size='+PERPAGE+'',{
+        method: 'get',
+        headers: getHeader(token)
+    }).then( response => Promise.all([response, response.json()]));
 }
 
 function fetchDataError(json) {
@@ -101,14 +80,14 @@ export function fetchDataSuccess(doc){
 	}
 }
 
-export function fetchModelEdit(slug,interval) {
+export function fetchModelEdit(slug) {
 	return (dispatch) => {
 		return fetchModelEditAPI(slug).then(([response, json]) =>{
 			if(response.status === 200){
 				dispatch(fetchModelEditAPISuccess(json))
 			}
 			else{
-			bootbox.alert("some thing went wrong")
+			bootbox.alert("something went wrong")
 			}
 		})
 	}
@@ -126,7 +105,6 @@ export function fetchModelEditAPI(slug) {
 		headers: getHeader(getUserDetailsOrRestart.get().userToken)
 	}).then( response => Promise.all([response, response.json()]));
 }
-//fetch stock dataset Preview
 export function getStockDataSetPreview(slug,interval) {
 	return (dispatch) => {
 		return fetchStockDataPreview(slug).then(([response, json]) =>{
@@ -158,6 +136,18 @@ export function getDataSetPreview(slug,interval) {
                     setTimeout(function() {
                     window.location.pathname="/signals";
                     },2000);
+                }else if(json.status==="SUCCESS" && (Object.keys(json.meta_data.scriptMetaData).length === 0 || json.meta_data.uiMetaData === null || json.meta_data.uiMetaData.columnDataUI===undefined)){
+                    bootbox.dialog({
+                        message:"Sorry, Unable to fetch data preview",
+                        buttons: {
+                            'confirm': {
+                                label: 'Ok',
+                                callback:function(){
+                                    window.location.pathname = "/data";
+                                }
+                            },
+                        },
+                    });
                 }
                 else{
                 dispatch(setCreateSignalLoaderFlag(false))
@@ -178,7 +168,7 @@ function fetchDataPreview(slug,dispatch,interval) {
     return fetch(API+'/api/datasets/'+slug+'/',{
         method: 'get',
         headers: getHeader(getUserDetailsOrRestart.get().userToken)
-    }).then( response => Promise.all([response, response.json()])).catch(function(error){
+    }).then( response => Promise.all([response, response.json()])).catch(function(){
 
         dispatch(hideDULoaderPopup());
         clearInterval(interval);
@@ -186,21 +176,19 @@ function fetchDataPreview(slug,dispatch,interval) {
         bootbox.alert(msg)
     });
 }
-//get preview data
 function fetchDataPreviewSuccess(dataPreview,interval,dispatch) {
     if(window.location.pathname != "/apps-stock-advisor/"){
-        dataPreview.meta_data.scriptMetaData.columnData != undefined && dataPreview.meta_data.scriptMetaData.columnData.forEach(column => {
+        dataPreview.meta_data.scriptMetaData!=undefined && dataPreview.meta_data.scriptMetaData.columnData != undefined && dataPreview.meta_data.scriptMetaData.columnData.forEach(column => {
             column.checked = true;
         });
     }
-    var  slug = dataPreview.slug;
+    var slug = dataPreview.slug;
     var dataset = slug;
-    // if(window.location.pathname == "/apps-stock-advisor/" || window.location.pathname.includes("apps-stock-advisor-analyze") )
     if(window.location.pathname.includes("apps-stock-advisor-analyze") )
      var getStatus = dataPreview.meta_data_status;
     else
     var getStatus = dataPreview.status;
-    if(getStatus == SUCCESS && store.getState().apps.appsLoaderModal==true && window.location.pathname.includes("apps-stock-advisor-analyze")){
+    if(getStatus == SUCCESS && store.getState().apps.appsLoaderModal==true && window.location.pathname.includes("stock")){
         var node = document.createElement("I");
         dispatch(openAppsLoaderValue(100, ''))
         document.getElementById("loadingMsgs").appendChild(node).classList.add('tickmark');
@@ -223,23 +211,23 @@ function fetchDataPreviewSuccess(dataPreview,interval,dispatch) {
                 dispatch(hideDULoaderPopup());
                 dispatch(dataUploadLoaderValue(DULOADERPERVALUE));
                 dispatch(closeAppsLoaderValue());
+                dispatch(clearLoadingMsg())
+                dispatch(setDataLoadedText(''));
+                dispatch(clearMetaDataLoaderValues())
                  }, 2000);
             
         } else{
             dispatch(dispatchDataPreview(dataPreview,slug));
         }
-        setTimeout(()=>{
-            dispatch(clearLoadingMsg())
-            dispatch(setDataLoadedText(''));
-            dispatch(clearMetaDataLoaderValues())
-        },2000); 
-        setTimeout(() => {
+        if(store.getState().datasets.dataUploadLoaderModal||store.getState().apps.appsLoaderModal){
+            return { type: "DATA_PREVIEW_ONLOAD", dataPreview,slug,}
+        }else{
             return {
                 type: "DATA_PREVIEW",
                 dataPreview,
                 slug,
             }
-             }, 2000);       
+        }
     }else if(getStatus == FAILED){
         clearInterval(interval);
         dispatch(hideDULoaderPopup());
@@ -249,18 +237,21 @@ function fetchDataPreviewSuccess(dataPreview,interval,dispatch) {
         dispatch(dataUploadLoaderValue(DULOADERPERVALUE));
         dispatch(clearLoadingMsg())
         dispatch(closeAppsLoaderValue());
-        //clearDatasetPreview()
-        //dispatch(hideDataPreview())
         return {
             type: "DATA_PREVIEW_FOR_LOADER",
             dataPreview,
             slug,
         }
     }else if(getStatus == "INPROGRESS"){
-        dispatch(dispatchDataPreviewLoadingMsg(dataPreview));
+        if(window.location.pathname.includes("/apps-stock-advisor")){
+            dispatch(getAppsStockList(1));
+        }else{
+            dispatch(dispatchDataPreviewLoadingMsg(dataPreview));
+            dispatch(getDataList(1))
+        }
         if(Object.keys(dataPreview.initial_messages).length != 0){
             dispatch(setDataLoadedText(dataPreview.initial_messages));
-            if(dataPreview.message[0].globalCompletionPercentage !=-1 && store.getState().datasets.metaDataLoaderidxVal!=0){
+            if(dataPreview.message[0].globalCompletionPercentage!=undefined && dataPreview.message[0].globalCompletionPercentage !=-1 && store.getState().datasets.metaDataLoaderidxVal!=0){
                 dispatch(updateMetaDataIndex(store.getState().datasets.metaDataLoaderidxVal))
             }
             dispatch(updateMetaDataIndexValue(dataPreview.message.length));
@@ -269,16 +260,6 @@ function fetchDataPreviewSuccess(dataPreview,interval,dispatch) {
             var msgLength=dataPreview.message.length-1
             dispatch(openAppsLoaderValue(dataPreview.message[msgLength].stageCompletionPercentage, dataPreview.message[msgLength].shortExplanation));
         }
-        // setTimeout(function() {
-        //    if(dataPreview.message[0].globalCompletionPercentage<=0){
-        //        return fetch(API + '/api/kill_timeout_job_from_ui/?slug='+slug, {
-        //            method: 'get',
-        //            headers: getHeader(getUserDetailsOrRestart.get().userToken)
-        //        }).then(response => Promise.all([response, response.json()])).catch(function(error){
-        //        bootbox.alert("Unable to connect to server. Check your connection please try again.")
-        //          });
-        //         }
-        //    },420000);
         return {
             type: "SELECTED_DATASET",
             dataset,
@@ -365,13 +346,10 @@ export function fetchAllUsersSuccess(json){
         json,
     }
 }
-//End of fetch userList
 
-export function setEditModelValues(dataSlug,modelSlug,flag) {
+export function setEditModelValues(flag) {
     return {
       type: "SET_EDIT_MODEL",
-      dataSlug,
-      modelSlug,
       flag
       
     }
@@ -384,11 +362,12 @@ export function setEditModelValues(dataSlug,modelSlug,flag) {
       itemType
     }
   }
-  export function openDTModalAction(rule,path) {
+  export function openDTModalAction(rule,path,name) {
     return {
       type: "DT_MODAL_SHOW",
       rule,
       path,
+      name
     }
   }
 
@@ -402,7 +381,7 @@ export function setEditModelValues(dataSlug,modelSlug,flag) {
       type: "DT_MODAL_HIDE",
     }
  }
-export function getAllDataList(pageNo) {
+export function getAllDataList() {
     return (dispatch) => {
         return fetchAllDataList(getUserDetailsOrRestart.get().userToken).then(([response, json]) =>{
             if(response.status === 200){
@@ -440,7 +419,7 @@ export function fetchAllDataSuccess(doc){
     }
 }
 
-export function handleShareItem(userIds,slug,shareItemType,shareItemName,dispatch){
+export function handleShareItem(userIds,slug,shareItemType,shareItemName){
     return shareItemApi(userIds,slug,shareItemType).then(([response, json]) =>{
         if(response.status === 200 && json.status=="true"){
             bootbox.alert(`${ shareItemType} "${shareItemName}" is shared successfully with ${json.sharedTo}.`)
@@ -452,30 +431,10 @@ export function handleShareItem(userIds,slug,shareItemType,shareItemName,dispatc
 }
 
 function shareItemApi(userIds,slug,shareItemType) {
-    if(shareItemType == "Data"){
-     return fetch(API+'/api/datasets/'+slug+'/share/?shared_id='+userIds,{
+     return fetch(API+'/api/'+shareItemType+'/'+slug+'/share/?shared_id='+userIds,{
         method: 'get',
         headers: getHeader(getUserDetailsOrRestart.get().userToken)
      }).then( response => Promise.all([response, response.json()]));
-    }
-    else if(shareItemType == "Model"){
-     return fetch(API+'/api/trainer/'+slug+'/share/?shared_id='+userIds,{
-        method: 'get',
-        headers: getHeader(getUserDetailsOrRestart.get().userToken)
-     }).then( response => Promise.all([response, response.json()]));
-    }
-    else if(shareItemType == "Signal"){
-        return fetch(API+'/api/signals/'+slug+'/share/?shared_id='+userIds,{
-           method: 'get',
-           headers: getHeader(getUserDetailsOrRestart.get().userToken)
-       }).then( response => Promise.all([response, response.json()]));
-    }
-    else{
-        return fetch(API+'/api/score/'+slug+'/share/?shared_id='+userIds,{
-            method: 'get',
-            headers: getHeader(getUserDetailsOrRestart.get().userToken)
-         }).then( response => Promise.all([response, response.json()]));   
-     }
 }
 
 
@@ -494,9 +453,6 @@ export function cancelAdvanceSettings(){
     }
 }
 
-
-
-       // function for select all in check
 export function checkAllAnalysisSelected(){
     return (dispatch) => {
         var totalAnalysisList = store.getState().datasets.dataSetAnalysisList;
@@ -517,10 +473,8 @@ export function checkAllAnalysisSelected(){
         }
         dispatch(updateSelectAllAnlysis(flag));
     }
-
 }
 export function selectedAnalysisList(evt,noOfColumnsToUse){
-
     var totalAnalysisList = store.getState().datasets.dataSetAnalysisList;
     var prevAnalysisList = jQuery.extend(true, {}, store.getState().datasets.dataSetPrevAnalysisList);
     var analysisList = [];
@@ -539,7 +493,6 @@ export function selectedAnalysisList(evt,noOfColumnsToUse){
                 let name = trendSettings[i].name.toLowerCase();
                 if(name.indexOf("specific measure") != -1)
                     trendSettings[i].selectedMeasure = $("#specific-trend-measure").val();
-
             }
         }
         else{
@@ -584,20 +537,7 @@ export function selectedAnalysisList(evt,noOfColumnsToUse){
                 if(analysisList[i].name == evt.name){
                     for(var j=0;j<analysisList[i].noOfColumnsToUse.length;j++){
                         if(analysisList[i].noOfColumnsToUse[j].name == "custom"){
-                            if($("#"+evt.id).val() != ""){
-                                let cusNum =  parseFloat($("#"+evt.id).val());
-                                if((cusNum^0) != cusNum){
-                                    let errormsg = statusMessages("warning", "Decimal Values are not allowed", "small_mascot");
-                                    bootbox.alert(errormsg);
-                                    return;
-                                }else if(cusNum <= 0){
-                                    let errormsg = statusMessages("warning", "Values should be greater than zero", "small_mascot");
-                                    bootbox.alert(errormsg);
-                                    return;
-                                }else{
-                                    analysisList[i].noOfColumnsToUse[j].value = $("#"+evt.id).val();
-                                }
-                            }
+                            analysisList[i].noOfColumnsToUse[j].value = $("#"+evt.id).val();
                         }
                     }
                     break;
@@ -615,20 +555,7 @@ export function selectedAnalysisList(evt,noOfColumnsToUse){
                     analysisList[i].status = false;
                 for(var j=0;j<analysisList[i].binSetting.length;j++){
                     if(evt.id == j){
-                        if(evt.value != ""){
-                            let binNum =  parseFloat(evt.value);
-                            if((binNum^0) != binNum){
-                                let errormsg = statusMessages("warning", "Decimal Values are not allowed", "small_mascot");
-                                bootbox.alert(errormsg);
-                                return;
-                            }else if(binNum <= 0){
-                                let errormsg = statusMessages("warning", "Values should be greater than zero", "small_mascot");
-                                bootbox.alert(errormsg);
-                                return;
-                            }else{
-                                analysisList[i].binSetting[j].value = parseInt(evt.value);                                
-                            }
-                        }
+                        analysisList[i].binSetting[j].value = parseInt(evt.value);                                
                     }
                 }
                 break;
@@ -701,9 +628,7 @@ export function selectedAnalysisList(evt,noOfColumnsToUse){
     }
 }
 
-
 export function selectAllAnalysisList(flag){
-    //var selectedAnalysis = evt.target.checked;
     var totalAnalysisList = store.getState().datasets.dataSetAnalysisList;
     var prevAnalysisList = store.getState().datasets.dataSetAnalysisList;
     var analysisList = [];
@@ -771,15 +696,6 @@ export function selectAllAnalysisList(flag){
     }
 }
 
-export function unselectAllPossibleAnalysis(){
-    let unselectAll =[];
-    return {
-        type: "UNSELECT_All_ANALYSIS_TYPE",
-        unselectAll
-    }
-
-}
-
 function updateList(slug,array){
     for(var i=0;i<array.length;i++){
         if(array[i].slug == slug){
@@ -800,6 +716,14 @@ function updateTimeDimList(slug,array,evt){
 return array;
 }
 
+function defaultTimeDimList(slug,array){
+    for(var i=0;i<array.length;i++){
+        if(array[i].slug == slug){
+            array[i].selected = true;
+        }
+    }
+    return array;
+}
 function getIsAllSelected(array){
     var isAllSelected = true;
 
@@ -852,6 +776,40 @@ function applyFilterOnVaraibles(){
         }
     }
 }
+export function setDefaultTimeDimensionVariable(item){
+    return (dispatch) => {
+        var dataSetMeasures = store.getState().datasets.CopyOfMeasures.slice();
+        var dataSetDimensions = store.getState().datasets.CopyOfDimension.slice();
+        var dataSetTimeDimensions = store.getState().datasets.CopyTimeDimension.slice();
+        var dimFlag =  store.getState().datasets.dimensionAllChecked;
+        var meaFlag = store.getState().datasets.measureAllChecked;
+        var count = store.getState().datasets.selectedVariablesCount;
+        if(item.columnType == "datetime"){
+            dataSetTimeDimensions  = defaultTimeDimList(item.slug,dataSetTimeDimensions);
+        }
+        dispatch(updateStoreVariables(dataSetMeasures,dataSetDimensions,dataSetTimeDimensions,dimFlag,meaFlag,count));
+        count = getTotalVariablesSelected();
+        dispatch(updateVariablesCount(count));
+    }
+}
+export function updateSelectedVariablesFromEdit(){
+    return(dispatch) =>{
+        var dataSetMeasures = store.getState().datasets.CopyOfMeasures.slice();
+        var dataSetDimensions = store.getState().datasets.CopyOfDimension.slice();
+        var dataSetTimeDimensions = store.getState().datasets.CopyTimeDimension.slice();
+        
+        var dimFlag =  store.getState().datasets.dimensionAllChecked;
+        var meaFlag = store.getState().datasets.measureAllChecked;
+        var count = store.getState().datasets.selectedVariablesCount;
+        
+        dimFlag = getIsAllSelected(dataSetDimensions);
+        meaFlag = getIsAllSelected(dataSetMeasures);
+        count = getTotalVariablesSelected();
+        dispatch(updateStoreVariables(dataSetMeasures,dataSetDimensions,dataSetTimeDimensions,dimFlag,meaFlag,count));
+        dispatch(updateVariablesCount(count));
+    }
+
+}
 export function updateSelectedVariables(evt){
     return (dispatch) => {
         var varSlug = evt.target.id;
@@ -883,29 +841,7 @@ export function updateSelectedVariables(evt){
         dispatch(updateStoreVariables(dataSetMeasures,dataSetDimensions,dataSetTimeDimensions,dimFlag,meaFlag,count));
         count = getTotalVariablesSelected();
         dispatch(updateVariablesCount(count));
-        if(evt.target.baseURI.includes("/createScore") && store.getState().apps.currentAppDetails != null && store.getState().apps.currentAppDetails.app_type == "REGRESSION"){
-            // if(count >= 10){
-                // $('.measure[type="checkbox"]').each(function() {
-                //     if (!$(this).is(":checked"))
-                //     $(this).prop('disabled', true);
-                // });
-                // $('.dimension[type="checkbox"]').each(function() {
-                //     if (!$(this).is(":checked"))
-                //     $(this).prop('disabled', true);
-                // });
-                // if(!($("input[name='date_type']:checked").val()))
-                // $('.timeDimension').prop("disabled",true);
-                //document.getElementById('measure').disabled = true;
-            // }
-            // else{
-            //     $('.measure[type="checkbox"]').each(function() {
-            //         $(this).prop('disabled', false);
-            //     });
-            //     $('.dimension[type="checkbox"]').each(function() {
-            //         $(this).prop('disabled', false);
-            //     });
-            //     $('.timeDimension').prop("disabled",false);
-            // }
+        if(evt.target.baseURI.includes("/createScore") && store.getState().apps.currentAppDetails != null && store.getState().apps.currentAppDetails.app_type == "REGRESSION"){           
         }
         if(evt.target.baseURI.includes("/createSignal"))
         dispatch(uncheckHideAnalysisList());
@@ -913,7 +849,7 @@ export function updateSelectedVariables(evt){
 
 }
 
-export function updateSelectedVariablesAction(value, dispatch){
+export function updateSelectedVariablesAction(value){
     return {
         type: "CLEAR_SELECTED_VARIABLES",
         value
@@ -1004,7 +940,6 @@ function deleteDataset(slug,dialog,dispatch){
     Dialog.resetOptions();
     return deleteDatasetAPI(slug).then(([response, json]) =>{
         if(response.status === 200){
-            //bootbox.alert("The data set is deleted successfully.")
             dispatch(getDataList(store.getState().datasets.current_page));
             dispatch(hideLoading());
         }
@@ -1022,10 +957,7 @@ function deleteDatasetAPI(slug){
             deleted:true,
         }),
     }).then( response => Promise.all([response, response.json()]));
-
 }
-
-
 
 export function handleRename(slug,dialog,name,allDataList,dataList){
     return (dispatch) => {
@@ -1067,14 +999,14 @@ function showRenameDialogBox(slug,dialog,dispatch,name,allDataList,dataList){
                    }
                      else if(datalist!="" && datalist.map(dataset=>dataset.name.toLowerCase()).includes($("#idRenameDataset").val().toLowerCase())){
                         document.getElementById("ErrorMsg").innerHTML = "Dataset with same name already exists.";
-                        showRenameDialogBox(slug,dialog,dispatch,name,allDataList,dataList)                      
+                        showRenameDialogBox(slug,dialog,dispatch,name)                      
                       }
                       else if(alldataSets!=undefined && alldataSets.map(dataset=>dataset.name.toLowerCase()).includes($("#idRenameDataset").val().toLowerCase())){
                         document.getElementById("ErrorMsg").innerHTML = "Dataset with same name already exists.";
-                        showRenameDialogBox(slug,dialog,dispatch,name,allDataList,dataList)  
+                        showRenameDialogBox(slug,dialog,dispatch,name)  
                       }
                       else{
-                      renameDataset(slug,dialog,$("#idRenameDataset").val(),allDataList,dataList,dispatch)
+                      renameDataset(slug,dialog,$("#idRenameDataset").val(),dispatch)
                       }
                   })
                   ],
@@ -1085,7 +1017,7 @@ function showRenameDialogBox(slug,dialog,dispatch,name,allDataList,dataList){
     });
 }
 
-function renameDataset(slug,dialog,newName,allDataList,dataList,dispatch){
+function renameDataset(slug,dialog,newName,dispatch){
     dispatch(showLoading());
     Dialog.resetOptions();
     return renameDatasetAPI(slug,newName).then(([response, json]) =>{
@@ -1109,18 +1041,15 @@ function renameDatasetAPI(slug,newName){
     }).then( response => Promise.all([response, response.json()]));
 }
 
-export function storeSearchElement(search_element){
+export function storeDataSearchElement(search_element){
     return {
         type: "SEARCH_DATA",
         search_element
     }
 }
 
-export function storeSearchElement_data(search_element){
-    storeSearchElement(search_element)
-}
 
-export function storeSortElements(sorton,sorttype){
+export function storeDataSortElements(sorton,sorttype){
     return {
         type: "SORT_DATA",
         sorton,
@@ -1144,8 +1073,6 @@ export function getTotalVariablesSelected(){
 export function updateDatasetVariables(measures,dimensions,timeDimensions,possibleAnalysisList,flag){
     let prevAnalysisList = jQuery.extend(true, {}, possibleAnalysisList);
     var count = getTotalVariablesSelected();
-
-
     return {
         type: "DATASET_VARIABLES",
         measures,
@@ -1155,33 +1082,15 @@ export function updateDatasetVariables(measures,dimensions,timeDimensions,possib
         prevAnalysisList,
         count,
         flag
-
     }
 }
 
 export function updateTargetAnalysisList(renderList){
     let prevAnalysisList = jQuery.extend(true, {}, renderList);
-
     return {
         type: "UPDATE_ANALYSIS_LIST",
         renderList,
         prevAnalysisList,
-
-    }
-}
-
-export function setDimensionSubLevels(selectedDimensionSubLevels){
-    return {
-        type: "SELECTED_DIMENSION_SUBLEVELS",
-        selectedDimensionSubLevels
-    }
-}
-
-export function  selectedDimensionSubLevel(dimensionSubLevel){
-
-    return {
-        type: "SELECTED_DIMENSION_SUB_LEVEL",
-        dimensionSubLevel
     }
 }
 
@@ -1280,11 +1189,9 @@ export function handleSelectAll(evt){
         var dimFlag =  store.getState().datasets.dimensionAllChecked;
         var meaFlag = store.getState().datasets.measureAllChecked;
         var count = store.getState().datasets.selectedVariablesCount;
-        var targetVariableType = store.getState().signals.getVarType;
         if(varType == "measure"){
             dataSetMeasures  = updateSelectedKey(dataSetMeasures,evt.target.checked);
             meaFlag = evt.target.checked;
-
         }else if(varType == "dimension"){
             dataSetDimensions  = updateSelectedKey(dataSetDimensions,evt.target.checked);
             dimFlag = evt.target.checked
@@ -1302,45 +1209,17 @@ export function handleSelectAll(evt){
                 $('.dimension[type="checkbox"]').each(function() {
                     $(this).prop('disabled', false);
                 });
-            }
-            // else
-            // {
-            //     if(count >= 10){
-            //         if(varType == "dimension"){
-            //             $('.measure[type="checkbox"]').each(function() {
-            //                 if (!$(this).is(":checked"))
-            //                 $(this).prop('disabled', true);
-            //             });
-            //         }
-            //         if(varType == "measure"){
-            //             $('.dimension[type="checkbox"]').each(function() {
-            //                 if (!$(this).is(":checked"))
-            //                 $(this).prop('disabled', true);
-            //             });
-            //         }
-            //     }
-            //     else{
-            //         $('.measure[type="checkbox"]').each(function() {
-            //             $(this).prop('disabled', false);
-            //         });
-            //         $('.dimension[type="checkbox"]').each(function() {
-            //             $(this).prop('disabled', false);
-            //         });
-            //     }
-            // }
+            }            
         }
         if(evt.target.baseURI.includes("/createSignal"))
         dispatch(uncheckHideAnalysisList());
     }
 }
 
-
 export function updateSubSetting(updatedSubSetting){
-
     return {
         type: "UPDATE_SUBSETTING",
         updatedSubSetting
-
     }
 }
 
@@ -1400,8 +1279,6 @@ function updateColumnName(dispatch,colSlug,newColName){
         }
     }
     metaData.meta_data.uiMetaData.columnDataUI = colData;
-    let dataPreview = Object.assign({}, metaData);
-    //handleColumnActions(dataPreview,slug,dispatch)
 }
 export function handleColumnClick(dialog,actionName,colSlug,colName,subActionName,colStatus){
     return (dispatch) => {
@@ -1412,7 +1289,6 @@ export function handleColumnClick(dialog,actionName,colSlug,colName,subActionNam
         }else if(actionName == REPLACE){
             dispatch(updateVLPopup(true));
             dispatch(addComponents(colSlug));
-            //updateColumnStatus(dispatch,colSlug,colName,actionName,subActionName);
         }else if(actionName == UNIQUE_IDENTIFIER){
             if(!colStatus){
 				let prevUniqueid = statusMessages("warning","Are you sure you want to make this column as unique identifier?","small_mascot");
@@ -1545,8 +1421,6 @@ export function updateColumnStatus(dispatch,colSlug,colName,actionName,subAction
     }
     dispatch(handleColumnActions(transformSettings,slug,isSubsetting))
     dispatch(updateVLPopup(false));
-    //dispatch(updateTransformSettings(transformSettings));
-
 }
 
 function updateUniqueIdentifierColumn(dispatch,actionName,colSlug,isChecked){
@@ -1576,20 +1450,11 @@ function updateUniqueIdentifierColumn(dispatch,actionName,colSlug,isChecked){
 }
 
 export function replaceValuesErrorAction(errMsg){
-    return(dispatch)=>{
-    let msg=statusMessages("error",errMsg,"small_mascot")
-    bootbox.alert(msg);
-    }
+    bootbox.alert(statusMessages("error",errMsg,"small_mascot"));
 }
 export function handleSaveEditValues(colSlug){
     return (dispatch) => {
         updateColumnStatus(dispatch,colSlug,"",REPLACE,"");
-    }
-}
-function updateTransformSettings(transformSettings){
-    return{
-        type: "UPDATE_DATA_TRANSFORM_SETTINGS",
-        transformSettings
     }
 }
 
@@ -1603,7 +1468,10 @@ export function updateColSlug(slug){
 export function handleColumnActions(transformSettings,slug,isSubsetting) {
     return (dispatch) => {
         return fetchModifiedMetaData(transformSettings,slug).then(([response, json]) =>{
-            if(response.status === 200){
+            if(response.status === 200){ 
+                dispatch(saveSelectedValuesForModel(store.getState().apps.apps_regression_modelName, "", ""))
+                dispatch(makeAllVariablesTrueOrFalse(true));
+                dispatch((resetSelectedTargetVariable()))
                 dispatch(fetchDataValidationSuccess(json,isSubsetting));
                 dispatch(hideLoading());
                 dispatch(vaiableSelectionUpdate(true));
@@ -1615,7 +1483,7 @@ export function handleColumnActions(transformSettings,slug,isSubsetting) {
                 dispatch(hideLoading());
                 let msg=statusMessages("error","Something went wrong. Please try again later.","small_mascot")
                 bootbox.alert(msg)            }
-        }).catch(function(error){
+        }).catch(function(){
             dispatch(hideLoading());
             dispatch(vaiableSelectionUpdate(false));
             let msg=statusMessages("error","Something went wrong. Please try again later.","small_mascot")
@@ -1653,8 +1521,6 @@ export function fetchDataValidationSuccess(uiMetaData,isSubsetting){
     }
 }
 
-
-
 export function addComponents(colSlug){
     return (dispatch) => {
         var transformSettings = store.getState().datasets.dataTransformSettings.slice();
@@ -1683,23 +1549,13 @@ export function addComponents(colSlug){
 
         if(dataColumnRemoveValues.length == 0){
             dataColumnRemoveValues.push({"id":1,"name":"remove1","valueToReplace":"","replacedValue":"","replaceType":"equals"});
-            // dataColumnRemoveValues.push({"id":2,"name":"remove2","valueToReplace":"","replacedValue":"","replaceType":"equals"});
 
         }if(dataColumnReplaceValues.length == 0){
             dataColumnReplaceValues.push({"replaceId":1,"name":"replace1","valueToReplace":"","replacedValue":"","replaceType":"equals"});
-            // dataColumnReplaceValues.push({"replaceId":2,"name":"replace2","valueToReplace":"","replacedValue":"","replaceType":"equals"});
         }
 
         dispatch(updateColumnReplaceValues(dataColumnReplaceValues))
         dispatch(updateColumnRemoveValues(dataColumnRemoveValues))
-
-    }
-
-}
-export function setReplacementType(){
-    var dataColumnReplaceValues = store.getState().datasets.dataSetColumnReplaceValues.slice();
-    for(var i=0;i<dataColumnReplaceValues.length;i++){
-        document.getElementById(dataColumnReplaceValues[i].replaceId).value = dataColumnReplaceValues[i].replaceType;
     }
 }
 function updateColumnRemoveValues(removeValues){
@@ -1721,7 +1577,6 @@ export function addMoreComponentsToReplace(editType){
             if(dataColumnRemoveValues.length > 0){
                 var max = dataColumnRemoveValues.reduce(function(prev, current) {
                     return (prev.id > current.id) ? prev : current
-
                 });
                 let length = max.id+1;
                 dataColumnRemoveValues.push({"id":length,"name":"remove"+length,"valueToReplace":"","replacedValue":"","replaceType":"equals"});
@@ -1819,13 +1674,6 @@ export function updateSelectAllAnlysis(flag){
     }
 }
 
-export function hideDataPreviewDropDown(props){
-  if(props.indexOf("scores") != -1){
-      $("#sub_settings").hide();
-      $('.cst_table .dropdown-toggle').removeAttr('data-toggle');
-  }
-
-}
 export function popupAlertBox(msg,props,url){
     bootbox.alert(msg,function(){
         props.history.push(url)
@@ -1851,23 +1699,6 @@ export function makeAllVariablesTrueOrFalse(value){
   }
 }
 
-export function DisableSelectAllCheckbox(){
-  let dataPrev=store.getState().datasets.dataPreview
-  let slug=store.getState().datasets.selectedDataSet
-  if(dataPrev&&dataPrev.meta_data){
-    let measureArray = $.grep(dataPrev.meta_data.uiMetaData.varibaleSelectionArray,function(val,key){
-        return(val.columnType == "measure");
-    });
-    let dimensionArray = $.grep(dataPrev.meta_data.uiMetaData.varibaleSelectionArray,function(val,key){
-        return(val.columnType == "dimension");
-    });
-    if(measureArray.length > 10)
-     $('.measureAll').prop("disabled",true);
-
-    if(dimensionArray.length > 10)
-     $(".dimensionAll").prop("disabled",true);
-}
-}
 export function uncheckHideAnalysisList(){
     return (dispatch) => {
         var dataSetMeasures = store.getState().datasets.CopyOfMeasures.slice();
@@ -2038,5 +1869,89 @@ export function clearFeatureEngineering(){
 export function setCreateSignalLoaderFlag(flag){
     return {
         type : "SET_CREATE_SIG_LOADER_FLAG",flag
+    }
+}
+
+export function variableSlectionBack(flag){
+    return {
+        type : "SET_VARIABLE_SELECTION_BACK",flag
+    }
+}
+export function SaveScoreName(value){
+    return {
+        type : "SAVE_SCORE_NAME",value
+    }
+}
+export function saveSelectedColSlug(slug){
+    return{
+        type:"ACTIVE_COL_SLUG",slug
+    }
+}
+export function paginationFlag(flag){
+    return{
+        type:"PAGINATION_FLAG",flag
+    }
+}
+export function clearDataList(){
+    return{
+        type:"CLEAR_DATA_LIST"
+    }
+}
+export function clearSubset(){
+    return{
+        type:"CLEAR_SUBSET"
+    }
+}
+export function setAlreadyUpdated(flag){
+    return{
+        type:"ALREADY_UPDATED",flag
+    }
+}
+export function setMeasureColValues(name,value){
+    return{
+        type:"CUR_MEASURE_COL",name,value
+    }
+}
+export function setDimensionColValues(name,value){
+    return{
+        type:"CUR_DIMENSION_COL",name,value
+    }
+}
+export function setDatetimeColValues(name,value){
+    return{
+        type:"CUR_DATETIME_COL",name,value
+    }
+}
+export function selMeasureCol(name){
+    return{
+        type:"SEL_MEASURE_COL",name
+    }
+}
+export function selDimensionCol(name){
+    return{
+        type:"SEL_DIMENSION_COL",name
+    }
+}
+export function selDatetimeCol(name){
+    return{
+        type:"SEL_DATETIME_COL",name
+    }
+}
+export function selectAllDimValues(flag){
+    return{
+        type:"SELECT_ALL_DIM_VAL",flag
+    }
+}
+export function selectDimValues(val,flag){
+    return{
+        type:"SELECT_DIM_VAL",val,flag
+    }
+}
+export function  getValueOfFromParam() {
+    if(window.location === undefined){
+
+    }else{
+      const params = new URLSearchParams(window.location.search);
+      return params.get('from');
     }
 }

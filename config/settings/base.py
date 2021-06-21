@@ -55,7 +55,9 @@ INSTALLED_APPS = [
     'guardian',
     'django_celery_beat',
     'ocr',
-    'ocrflow'
+    'ocrflow',
+    # 'django_celery_results',
+    # 'celery_progress',
 ]
 
 MIDDLEWARE = [
@@ -70,6 +72,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'api.auditLogMiddleware_modified.AuthenticationMiddlewareJWT',
     'auditlog.middleware.AuditlogMiddleware',
+    'django_currentuser.middleware.ThreadLocalUserMiddleware'
 
 ]
 
@@ -586,7 +589,7 @@ DATA_SOURCES_CONFIG = {"conf": [{
 }
 # dev api http://34.196.204.54:9092
 THIS_SERVER_DETAILS = {
-    "host": env('THIS_SERVER_HOST'),"madvisordev.marlabsai.com" # shoudn't start with http://
+    "host": env('THIS_SERVER_HOST'), #madvisordev.marlabsai.com" # shoudn't start with http://
     "port": env('THIS_SERVER_PORT'),
     "initail_domain": "/api"
 }
@@ -1812,3 +1815,5 @@ OCR_DATA_SOURCES_CONFIG = {"conf": [{
 
 ]
 }
+
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20242880

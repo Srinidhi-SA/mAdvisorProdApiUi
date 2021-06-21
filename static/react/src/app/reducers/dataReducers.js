@@ -7,7 +7,7 @@ export default function reducer(state = {
   dataList: {},
   selectedDataSet: "",
   current_page: 1,
-  dataPreview: null,
+  dataPreview: null, 
   allDataSets: {},
   allUserList:{},
   dataPreviewFlag: false,
@@ -15,8 +15,6 @@ export default function reducer(state = {
   selectedVariablesCount: 0,
   signalMeta: {},
   curUrl: "",
-  editmodelModelSlug:"",
-  editmodelDataSlug:"",
   editmodelFlag:false,
   dataUploadLoaderModal: false,
   dULoaderValue: -1,
@@ -35,12 +33,9 @@ export default function reducer(state = {
   dataLoaderText: "Preparing data for loading",
   dataSetAnalysisList: {},
   dataSetPrevAnalysisList:{},
-  selectedDimensionSubLevels: null,
- // selectedTrendSub: [],
   dimensionSubLevel: [],
   updatedSubSetting: default_updatedSubSetting,
   subsettingDone: false,
-  subsettedSlug: "",
   loading_message:[],
   dataLoadedText:[],
   dataTransformSettings:[],
@@ -60,19 +55,17 @@ export default function reducer(state = {
   createScoreShowVariables:false,
   dataTypeChangedTo:{},
   missingValueTreatment:{},
+  outlierRemoval:{},
   featureEngineering:{},
   selectedVariables : {},
   checkedAll:true,
   checked:true,
-  removeDuplicateAttributes :{},
   removeDuplicateObservations :{},
-  duplicateAttributes: false,
   duplicateObservations: false,
-  olUpperRange : {},
-  binsOrLevelsShowModal:false,
-  transferColumnShowModal:false,
+  showBinsLevelsTransformModal:false,
   selectedBinsOrLevelsTab:"Bins",
   selectedItem:{},
+  selectedButton:"",
   shareItem:{},
   shareItemSlug:"",
   shareItemType:"",
@@ -82,6 +75,7 @@ export default function reducer(state = {
   dtRule: "",
   dtData: {},
   dtPath:[],
+  dtName:"",
   isSpecifyIntervalsEnabled:true,
   convertUsingBin: "false",
   modelEditconfig:"",
@@ -91,6 +85,14 @@ export default function reducer(state = {
   createSigLoaderFlag: false,
   metaDataLoaderidxVal:0,
   metaDataLoaderidx:0,
+  varibleSelectionBackFlag:false,
+  scoreName:"",
+  activeColSlug:"",
+  paginationFlag:false,
+  alreadyUpdated:false,
+  measureColSelected:{},
+  dimensionColSelected:{},
+  datetimeColSelected:{},
 }, action) {
 
   switch (action.type) {
@@ -101,6 +103,13 @@ export default function reducer(state = {
           dataList: action.data,
           latestDatasets:action.latestDatasets,
           current_page: action.current_page
+        }
+      }
+      break;  
+      case "CLEAR_DATA_LIST":{
+        return{
+          ...state,
+          dataList:{}
         }
       }
       break;
@@ -143,7 +152,18 @@ export default function reducer(state = {
           dataPreview: action.dataPreview,
           dataPreviewFlag: true,
           selectedDataSet: action.slug,
-          subsettedSlug: "",
+          subsettingDone: false,
+          dataTransformSettings:action.dataPreview.meta_data.uiMetaData.transformation_settings.existingColumns,
+        }
+      }
+      break; 
+      case "DATA_PREVIEW_ONLOAD":
+      {
+        return {
+          ...state,
+          dataPreview: action.dataPreview,
+          dataPreviewFlag: false,
+          selectedDataSet: action.slug,
           subsettingDone: false,
           dataTransformSettings:action.dataPreview.meta_data.uiMetaData.transformation_settings.existingColumns,
         }
@@ -221,6 +241,7 @@ export default function reducer(state = {
             dtModelShow: true,
             dtRule: action.rule,
             dtPath: action.path,
+            dtName:action.name
           }
         }
         break;
@@ -228,8 +249,6 @@ export default function reducer(state = {
       {
         return {
           ...state,
-          editmodelDataSlug:action.dataSlug,
-          editmodelModelSlug:action.modelSlug,
           editmodelFlag:action.flag
         }
       }
@@ -268,14 +287,6 @@ export default function reducer(state = {
       }
       break;
 
-    case "UNSELECT_All_ANALYSIS_TYPE":
-      {
-        return {
-          ...state,
-          selectedAnalysis: action.unselectAll
-        }
-      }
-      break;
 
     case "SHOW_DATA_PREVIEW":
       {
@@ -517,14 +528,6 @@ export default function reducer(state = {
       }
     }
     break;
-    case "SELECTED_DIMENSION_SUBLEVELS":
-      {
-        return {
-          ...state,
-          selectedDimensionSubLevels: action.SubLevels
-        }
-      }
-      break;
     case "UNSELECTED_TREND_SUB_LIST":
       {
         return {
@@ -534,14 +537,6 @@ export default function reducer(state = {
       }
       break;
 
-    case "SELECTED_DIMENSION_SUB_LEVEL":
-      {
-        return {
-          ...state,
-          dimensionSubLevel: action.dimensionSubLevel
-        }
-      }
-      break;
     case "UPDATE_SUBSETTING":
       {
         return {
@@ -555,7 +550,6 @@ export default function reducer(state = {
       {
         return {
           ...state,
-          subsettedSlug: action.subsetRs.slug,
           updatedSubSetting: {
             "measureColumnFilters": [],
             "dimensionColumnFilters": [],
@@ -598,14 +592,6 @@ export default function reducer(state = {
       }
     }
     break;
-    case "UPDATE_DATA_TRANSFORM_SETTINGS":
-    {
-    	return{
-    		...state,
-    		dataTransformSettings:action.transformSettings
-    	}
-    }
-    break;
     case "UPDATE_VARIABLES_TYPES_MODAL":
     {
          return{
@@ -636,7 +622,6 @@ export default function reducer(state = {
       return {
         ...state,
         dataPreview: action.dataPreview,
-        subsettedSlug: "",
         subsettingDone: action.isSubsetting,
         dataTransformSettings:action.dataPreview.meta_data.uiMetaData.transformation_settings.existingColumns,
       }
@@ -729,7 +714,6 @@ export default function reducer(state = {
     {
       return {
         ...state,
-        subsettedSlug: action.slug,
         updatedSubSetting: {
           "measureColumnFilters": [],
           "dimensionColumnFilters": [],
@@ -831,17 +815,6 @@ export default function reducer(state = {
   
       }
       break;
-
-    case "REMOVE_DUPLICATE_ATTRIBUTES":
-    {
-      return {
-        ...state,
-        removeDuplicateAttributes : action.yesOrNo,
-        duplicateAttributes: action.yesOrNo,
-      }
-    }
-    break;
-
     case "REMOVE_DUPLICATE_OBSERVATIONS":
     {
       return {
@@ -851,15 +824,6 @@ export default function reducer(state = {
       }
     }
     break;
-
-    case "OUTLIER_UR":
-    {
-      return{
-        ...state,
-        olUpperRange : action.value
-      }
-    }
-
     case "DATACLEANSING_DATA_TYPE_CHANGE":
     {
        var newDataPreview = state.dataPreview
@@ -897,44 +861,15 @@ export default function reducer(state = {
       }
     break;
 
-    case "BINS_LEVELS_SHOW_MODAL":
-    {
-      return {
+    case "SHOW_BINS_LEVELS_TRANSFORM_MODAL":{
+      return{
         ...state,
-        binsOrLevelsShowModal: true,
-        selectedItem:action.selectedItem
+        showBinsLevelsTransformModal : action.flag,
+        selectedItem : action.item,
+        selectedButton : action.btn
       }
     }
     break;
-
-    case "BINS_LEVELS_HIDE_MODAL":
-    {
-      return {
-        ...state,
-        binsOrLevelsShowModal: false
-      }
-    }
-    break;
-
-    case "TRANSFORM_COLUMN_SHOW_MODAL":
-    {
-      return {
-        ...state,
-        transferColumnShowModal: true,
-        selectedItem:action.selectedItem
-      }
-    }
-    break;
-
-    case "TRANSFORM_COLUMN_HIDE_MODAL":
-    {
-      return {
-        ...state,
-        transferColumnShowModal: false
-      }
-    }
-    break;
-
     case "BINS_OR_LEVELS":
     {
       return {
@@ -970,9 +905,7 @@ export default function reducer(state = {
         ...state,
         missingValueTreatment:{},
         outlierRemoval:{},
-        removeDuplicateAttributes :{},
         removeDuplicateObservations :{},
-        duplicateAttributes : false,
         duplicateObservations : false,
 
       }
@@ -1021,6 +954,20 @@ export default function reducer(state = {
       }
     }
     break;
+    case "SET_VARIABLE_SELECTION_BACK":{
+      return {
+        ...state,
+        varibleSelectionBackFlag : action.flag,
+      }
+    }
+    break;
+    case "SAVE_SCORE_NAME":{
+      return {
+        ...state,
+        scoreName : action.value
+      }
+    }
+    break;
     case "METADATA_LOADER_IDX_VAL":{
       return{
         ...state,
@@ -1040,6 +987,135 @@ export default function reducer(state = {
         ...state,
         metaDataLoaderidxVal:0,
         metaDataLoaderidx:0,
+      }
+    }
+    break;
+    case "ACTIVE_COL_SLUG":{
+      return{
+        ...state,
+        activeColSlug:action.slug
+      }
+    }
+    break;
+    case "PAGINATION_FLAG":{
+      return{
+        ...state,
+        paginationFlag:action.flag
+      }
+    }
+    break;
+    case "CLEAR_SUBSET":{
+      return{
+        ...state,
+        alreadyUpdated:false,
+        measureColSelected:{},
+        dimensionColSelected:{},
+        datetimeColSelected:{},
+        updatedSubSetting: {
+          "measureColumnFilters": [],
+          "dimensionColumnFilters": [],
+          "timeDimensionColumnFilters": []
+        },
+        activeColSlug:"",
+      }
+    }
+    break;
+    case "ALREADY_UPDATED":{
+      return{
+        ...state,
+        alreadyUpdated : action.flag
+      }
+    }
+    break;
+    case "CUR_MEASURE_COL":{
+      let curMeasureCol = state.measureColSelected
+      curMeasureCol[action.name] = action.value
+      return{
+        ...state,
+        measureColSelected : curMeasureCol
+      }
+    }
+    break;
+    case "CUR_DIMENSION_COL":{
+      let curDimensionCol = state.dimensionColSelected
+      curDimensionCol[action.name] = action.value
+      return{
+        ...state,
+        dimensionColSelected : curDimensionCol
+      }
+    }
+    break;
+    case "CUR_DATETIME_COL":{
+      let curDatetimeCol = state.datetimeColSelected
+      curDatetimeCol[action.name] = action.value
+      return{
+        ...state,
+        datetimeColSelected : curDatetimeCol
+      }
+    }
+    break;
+    case "SEL_MEASURE_COL":{
+      let cMin = state.updatedSubSetting.measureColumnFilters.filter(i=>i.colname===action.name)[0].lowerBound
+      let cMax = state.updatedSubSetting.measureColumnFilters.filter(i=>i.colname===action.name)[0].upperBound
+      let measure = state.measureColSelected
+      measure["curMin"] = cMin
+      measure["curMax"] = cMax
+      return{
+        ...state,
+        measureColSelected : measure
+      }
+    }
+    break;
+    case "SEL_DIMENSION_COL":{
+      let value = state.updatedSubSetting.dimensionColumnFilters.filter(i=>i.colname===action.name)[0].values
+      let dimension = state.dimensionColSelected
+      dimension["selectedDimensionList"] = value
+      dimension["curDimensionList"] = value
+      return{
+        ...state,
+        dimensionColSelected : dimension
+      }
+    }
+    break;
+    case "SEL_DATETIME_COL":{
+      let lB = state.updatedSubSetting.timeDimensionColumnFilters.filter(i=>i.colname===action.name)[0].lowerBound
+      let uB = state.updatedSubSetting.timeDimensionColumnFilters.filter(i=>i.colname===action.name)[0].upperBound
+      let datetime = state.datetimeColSelected
+      datetime["curstartDate"] = lB
+      datetime["curendDate"] = uB
+      return{
+        ...state,
+        datetimeColSelected : datetime
+      }
+    }
+    break;
+
+    case "SELECT_ALL_DIM_VAL":{
+      let curDim = state.dimensionColSelected
+      if(action.flag){
+        curDim["selectedDimensionList"] = Object.keys(curDim["dimensionList"]);
+      }else{
+        curDim["selectedDimensionList"] = [];
+      }
+      return{
+        ...state,
+        dimensionColSelected : curDim
+      }
+    }
+    break;
+    case "SELECT_DIM_VAL":{
+      let curDim = state.dimensionColSelected
+      if(!action.flag){
+        const index = curDim["selectedDimensionList"].indexOf(action.val);
+        if(index > -1){
+          curDim["selectedDimensionList"].splice(index, 1);
+        }
+      }else{
+          curDim["selectedDimensionList"].push(action.val)
+      }
+      return{
+        ...state,
+        dimensionColSelected : curDim
       }
     }
     break;

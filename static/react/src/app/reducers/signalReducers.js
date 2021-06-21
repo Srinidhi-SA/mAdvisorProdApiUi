@@ -2,7 +2,9 @@ export default function reducer(state = {
   signalList: {},
   allSignalList:{},
   signalAnalysis:{},
+  signalAnalysisViewed:"",
   algoAnalysis:{},
+  mmLoaderFlag:true,
   selectedAlgo:{},
   selectedSignal:{},
   newSignalShowModal:false,
@@ -14,7 +16,6 @@ export default function reducer(state = {
   signal_search_element:"",
   signal_sorton:null,
   signal_sorttype:null,
-  sideCardListFlag:null,
   loaderText:"Submitting for analysis",
   signalLoadedText:[],
   advanceSettingsModal:false,
@@ -29,11 +30,11 @@ export default function reducer(state = {
   chartDataClassId :"",
   selectedL1: "",
   latestSignals:{},
-  selected_signal_type:"",
   toggleValues:{},
   fromVariableSelectionPage:false,
   sigLoaderidxVal:0,
   sigLoaderidx:0,
+  selectedDepthPrediction:[],
 }, action) {
 
   switch (action.type) {
@@ -47,7 +48,12 @@ export default function reducer(state = {
         }
       }
       break;
-
+    case "CLEAR_SIGNAL_LIST":{
+      return{
+        ...state,
+        signalList:{}
+      }
+    }
     case "SIGNAL_LIST_ERROR":
       {
         throw new Error("Unable to fetch signal list!!");
@@ -59,6 +65,7 @@ export default function reducer(state = {
         return {
           ...state,
           signalAnalysis: action.signalAnalysis.data,
+          signalAnalysisViewed:action.signalAnalysis.viewed,
           selectedSignal: action.errandId,
           urlPrefix:"/signals",
           signalLoadedText:action.signalAnalysis.initial_messages,
@@ -66,6 +73,14 @@ export default function reducer(state = {
       }
       break;
 
+      case "SIGNAL_ANALYSIS_ONLOAD":
+      {
+        return {
+          ...state,
+          signalAnalysis:"",
+        }
+      }
+      break;
       case "ALGO_LIST_ERROR":
       {
         throw new Error("Unable to fetch algo list!!");
@@ -82,7 +97,12 @@ export default function reducer(state = {
         }
       }
       break;
-
+      case "SET_MM_LOADER":{
+        return{
+          ...state,
+          mmLoaderFlag : action.flag
+        }
+      }
   
 
       case "ALGO_ANALYSIS_ERROR":
@@ -176,6 +196,15 @@ export default function reducer(state = {
         }
       }
       break;
+      case "SEL_DEPTH_PREDICTION":{
+        let curSelectedDepthPrediction = state.selectedDepthPrediction;
+        curSelectedDepthPrediction[action.dropDownName] = action.predictionSelected
+        return{
+          ...state,
+          selectedDepthPrediction : curSelectedDepthPrediction
+        }
+      }
+      break;
     case "HIDE_CREATE_SIGNAL_LOADER":
       {
         return {
@@ -245,16 +274,6 @@ export default function reducer(state = {
 		signal_sorttype:action.sorttype
       }
     }
-    break;
-
-	case "SET_SIDECARDLIST_FLAG":
-	{
-		return{
-			...state,
-			sideCardListFlag:action.sideCardListClass
-		}
-
-	}
     break;
 	case "ADVANCE_SETTINGS_MODAL":
 	{
@@ -330,14 +349,6 @@ export default function reducer(state = {
     return{
       ...state,
       selectedL1:action.selectedL1
-    }
-  }
-  break;
-  case "SELECTED_SIGNAL_TYPE":
-  {
-    return{
-      ...state,
-      selected_signal_type:action.signal_type
     }
   }
   break;

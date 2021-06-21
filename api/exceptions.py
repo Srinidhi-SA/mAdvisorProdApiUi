@@ -22,7 +22,7 @@ def custom_exception_handler(exc, context):
     return response
 
 
-def creation_failed_exception(err):
+def creation_failed_exception(err, *args, **kwargs):
     response = Response()
     if response is not None:
         response.data = {}
@@ -33,7 +33,10 @@ def creation_failed_exception(err):
         response.data['errors'] = "Creation failed"
         response.data['status'] = False
         response.data['message'] = 'failed'
-
+        if args:
+            response.data['custom_list'] = args
+        if kwargs:
+            response.data['custom_dict'] = kwargs
         response.data['exception'] = err
 
     return response

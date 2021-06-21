@@ -1,14 +1,13 @@
 import React from "react";
 import {connect} from "react-redux";
-import {Redirect} from "react-router";
 import store from "../../store";
-import {Modal, Button} from "react-bootstrap";
+import {Modal} from "react-bootstrap";
 import {showChartData} from "../../actions/signalActions";
 import renderHTML from 'react-render-html';
 import {Scrollbars} from 'react-custom-scrollbars';
 
 @connect((store) => {
-  return {login_response: store.login.login_response, signal: store.signals.signalAnalysis, 
+  return {
       viewChartDataFlag: store.signals.viewChartDataFlag, chartDataClassId: store.signals.chartDataClassId};
 })
 
@@ -32,9 +31,7 @@ export class ViewChartData extends React.Component {
        tabledata = this.props.tabledata;
       var collength = tabledata.length;
       var rowlength = tabledata[0].length;
-      var tablehtml = "<thead><tr>",
-        tablehead = "",
-        tablebody = "";
+      var tablehtml = "<thead><tr>";
       for (var i = 0; i < collength; i++) {
         tablehtml += "<th> <b>" + tabledata[i][0] + "</b></th>";
       }
@@ -61,9 +58,7 @@ export class ViewChartData extends React.Component {
               <div className={this.props.tableCls} style={{
                 backgroundColor: "white"
               }}>
-                <Scrollbars style={{
-                  height: 300
-                }} renderTrackHorizontal={props => <div {...props} className="track-horizontal" style={{
+                <Scrollbars autoHeight autoHeightMin={100} autoHeightMax={300} renderTrackHorizontal={props => <div {...props} className="track-horizontal" style={{
                   display: "none"
                 }}/>} renderThumbHorizontal={props => <div {...props} className="thumb-horizontal" style={{
                   display: "none"
@@ -75,11 +70,6 @@ export class ViewChartData extends React.Component {
 
 
           </Modal.Body>
-          <Modal.Footer>
-            <a href={this.props.tableDownload} id="cddownload" className="btn btn-primary" download>
-              <i className="fa fa-cloud-download"></i>
-              &nbsp;Download Chart Data</a>
-          </Modal.Footer>
         </Modal>
       </div>
     );

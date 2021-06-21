@@ -176,11 +176,15 @@ class QueryCommonFiltering:
             if operator == 'EQL':
                 self.query_set = self.query_set.filter(confidence=float(value))
         if self.status is not None:
-            status_mapping_dict = {'R': 'ready_to_recognize','A': 'ready_to_assign', 'V1': 'ready_to_verify(L1)','C1': 'l1_verified', 'V2': 'ready_to_verify(L2)', 'E': 'ready_to_export'}
+            status_mapping_dict = {'R': 'ready_to_recognize', 'A': 'ready_to_assign', 'V1': 'ready_to_verify(L1)',
+                                   'C1': 'l1_verified', 'V2': 'ready_to_verify(L2)', 'E': 'ready_to_export'}
             print(status_mapping_dict[self.status])
             self.query_set = self.query_set.filter(status=status_mapping_dict[self.status])
         if self.reviewStatus is not None:
-            status_mapping_dict = {'created': ['created'], 'pendingL1': ['submitted_for_review(L1)'], 'pendingL2': ['submitted_for_review(L2)'], 'reviewedL1': ['reviewerL1_reviewed'], 'reviewedL2': ['reviewerL2_reviewed'], 'rejected': ['reviewerL2_rejected', 'reviewerL1_rejected']}
+            status_mapping_dict = {'created': ['created'], 'pendingL1': ['submitted_for_review(L1)'],
+                                   'pendingL2': ['submitted_for_review(L2)'], 'reviewedL1': ['reviewerL1_reviewed'],
+                                   'reviewedL2': ['reviewerL2_reviewed'],
+                                   'rejected': ['reviewerL2_rejected', 'reviewerL1_rejected']}
             self.query_set = self.query_set.filter(status__in=status_mapping_dict[self.reviewStatus])
         if self.fields is not None:
             operator, value = self.fields[:3], self.fields[3:]
@@ -195,7 +199,10 @@ class QueryCommonFiltering:
         if self.time is not None:
             self.query_set = self.query_set.filter(time_taken=float(self.time))
         if self.template is not None:
-            self.query_set = self.query_set.filter(classification=self.template)
+            try:
+                self.query_set = self.query_set.filter(classification=self.template)
+            except:
+                self.query_set = self.query_set.filter(ocr_image__classification=self.template)
         if self.filter_fields is not None:
             self.filter_fields = self.filter_fields.replace(',', '\",\"').replace('[', '[\"').replace(']', '\"]')
             self.filter_fields = ast.literal_eval(self.filter_fields)
@@ -212,11 +219,11 @@ class QueryCommonFiltering:
         if self.accuracy is not None:
             operator, value = self.accuracy[:3], self.accuracy[3:]
             if operator == 'GTE':
-                self.query_set = self.query_set.filter(ocr_image__confidence__gte=float(value))
+                self.query_set = self.query_set.filter(ocrimage__confidence__gte=float(value))
             if operator == 'LTE':
-                self.query_set = self.query_set.filter(ocr_image__confidence__lte=float(value))
+                self.query_set = self.query_set.filter(ocrimage__confidence__lte=float(value))
             if operator == 'EQL':
-                self.query_set = self.query_set.filter(ocr_image__confidence=int(value))
+                self.query_set = self.query_set.filter(ocrimage__confidence=int(value))
 
         if self.field_count is not None:
             operator, value = self.field_count[:3], self.field_count[3:]
@@ -228,7 +235,7 @@ class QueryCommonFiltering:
                 self.query_set = self.query_set.filter(ocr_image__fields=int(value))
 
         if self.project is not None:
-            self.query_set = self.query_set.filter(ocr_image__project__name__icontains=self.project)
+            self.query_set = self.query_set.filter(ocr_image__project__name__exact=self.project)
 
         return self.query_set
 
@@ -236,7 +243,7 @@ class QueryCommonFiltering:
 def get_listed_data(
         viewset=None,
         request=None,
-        list_serializer=None
+        list_serializer=None,
 ):
     """
 
@@ -256,10 +263,55 @@ def get_listed_data(
     query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
 
     if 'page' in request.query_params:
-        if request.query_params.get('page') == 'all':
+        if request.query_params.get('page').lower() == 'all':
+            serializer = list_serializer(query_set, context={'request': request}, many=True)
+            return Response({
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
+            })
+    page_class = viewset.pagination_class()
+    page = page_class.paginate_queryset(
+        queryset=query_set,
+        request=request,
+        list_serializer=list_serializer,
+        view=viewset
+    )
+
+    resp = page_class.modified_get_paginate_response(page)
+    return resp
+
+
+def get_userlisted_data(
+        viewset=None,
+        request=None,
+        list_serializer=None,
+        role=None
+):
+    """
+
+    :param viewset: use to  get_queryset() / pagination_class
+    :param request: use to query_params
+    :param list_serializer: pass Listing Serializer
+    :return:
+    """
+    query_set = viewset.get_queryset(request, role)
+
+    # common filtering
+    qcf = QueryCommonFiltering(
+        query_set=query_set,
+        request=request
+    )
+
+    query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
+
+    if 'page' in request.query_params:
+        if request.query_params.get('page').lower() == 'all':
             serializer = list_serializer(query_set, many=True)
             return Response({
-                "data": serializer.data
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
             })
     page_class = viewset.pagination_class()
     page = page_class.paginate_queryset(
@@ -284,10 +336,12 @@ def get_image_list_data(viewset, queryset, request, serializer):
     query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
 
     if 'page' in request.query_params:
-        if request.query_params.get('page') == 'all':
+        if request.query_params.get('page').lower() == 'all':
             serializer = serializer(query_set, many=True)
             return Response({
-                "data": serializer.data
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
             })
     page_class = viewset.pagination_class()
     page = page_class.paginate_queryset(
@@ -305,7 +359,8 @@ def get_specific_listed_data(
         viewset=None,
         request=None,
         list_serializer=None,
-        role=None
+        role=None,
+        user_type=None
 ):
     """
 
@@ -314,7 +369,7 @@ def get_specific_listed_data(
     :param list_serializer: pass Listing Serializer
     :return:
     """
-    query_set = viewset.get_specific_reviewer_qyeryset(role)
+    query_set = viewset.get_specific_reviewer_qyeryset(request, role, user_type)
 
     # common filtering
     qcf = QueryCommonFiltering(
@@ -325,10 +380,12 @@ def get_specific_listed_data(
     query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
 
     if 'page' in request.query_params:
-        if request.query_params.get('page') == 'all':
+        if request.query_params.get('page').lower() == 'all':
             serializer = list_serializer(query_set, many=True)
             return Response({
-                "data": serializer.data
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
             })
     page_class = viewset.pagination_class()
     page = page_class.paginate_queryset(
@@ -354,7 +411,7 @@ def get_reviewer_data(
     :param list_serializer: pass Listing Serializer
     :return:
     """
-    query_set = viewset.get_specific_reviewer_detail_queryset()
+    query_set = viewset.get_specific_reviewer_detail_queryset(request)
 
     # common filtering
     qcf = QueryCommonFiltering(
@@ -365,10 +422,12 @@ def get_reviewer_data(
     query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
 
     if 'page' in request.query_params:
-        if request.query_params.get('page') == 'all':
+        if request.query_params.get('page').lower() == 'all':
             serializer = list_serializer(query_set, many=True)
             return Response({
-                "data": serializer.data
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
             })
     page_class = viewset.pagination_class()
     page = page_class.paginate_queryset(
@@ -406,10 +465,12 @@ def get_specific_assigned_requests(
     query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
 
     if 'page' in request.query_params:
-        if request.query_params.get('page') == 'all':
+        if request.query_params.get('page').lower() == 'all':
             serializer = list_serializer(query_set, many=True)
             return Response({
-                "data": serializer.data
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
             })
     page_class = viewset.pagination_class()
     page = page_class.paginate_queryset(
@@ -420,7 +481,7 @@ def get_specific_assigned_requests(
     )
 
     resp = page_class.modified_get_paginate_response(page)
-    return resp, query_set
+    return resp
 
 
 def get_filtered_ocrimage_list(
@@ -447,10 +508,98 @@ def get_filtered_ocrimage_list(
 
     query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
     if 'page' in request.query_params:
-        if request.query_params.get('page') == 'all':
+        if request.query_params.get('page').lower() == 'all':
             serializer = list_serializer(query_set, many=True)
             return Response({
-                "data": serializer.data
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
+            })
+    page_class = viewset.pagination_class()
+    page = page_class.paginate_queryset(
+        queryset=query_set,
+        request=request,
+        list_serializer=list_serializer,
+        view=viewset
+    )
+
+    resp = page_class.modified_get_paginate_response(page)
+    return resp
+
+
+def get_image_data(
+        viewset=None,
+        request=None,
+        queryset=None,
+        list_serializer=None,
+):
+    """
+
+    :param viewset: use to  get_queryset() / pagination_class
+    :param request: use to query_params
+    :param list_serializer: pass Listing Serializer
+    :return:
+    """
+    query_set = queryset
+
+    # common filtering
+    qcf = QueryCommonFiltering(
+        query_set=query_set,
+        request=request
+    )
+
+    query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
+
+    if 'page' in request.query_params:
+        if request.query_params.get('page').lower() == 'all':
+            serializer = list_serializer(query_set, many=True)
+            return Response({
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
+            })
+    page_class = viewset.pagination_class()
+    page = page_class.paginate_queryset(
+        queryset=query_set,
+        request=request,
+        list_serializer=list_serializer,
+        view=viewset
+    )
+
+    resp = page_class.modified_get_paginate_response(page)
+    return resp
+
+
+def get_filtered_project_list(
+        viewset=None,
+        request=None,
+        list_serializer=None,
+        imageStatus=None,
+        projectslug=None
+):
+    """
+
+    :param viewset: use to  get_queryset() / pagination_class
+    :param request: use to query_params
+    :param list_serializer: pass Listing Serializer
+    :return:
+    """
+    query_set = viewset.get_reviewer_queryset(user=request.user)
+
+    # common filtering
+    qcf = QueryCommonFiltering(
+        query_set=query_set,
+        request=request
+    )
+
+    query_set = qcf.execute_common_filtering_and_sorting_and_ordering()
+    if 'page' in request.query_params:
+        if request.query_params.get('page').lower() == 'all':
+            serializer = list_serializer(query_set, context={'request': request}, many=True)
+            return Response({
+                "data": serializer.data,
+                "total_number_of_pages": 1,
+                "current_page": 1
             })
     page_class = viewset.pagination_class()
     page = page_class.paginate_queryset(

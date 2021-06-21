@@ -1,12 +1,6 @@
 import React from "react";
 import { connect } from "react-redux";
-import { Redirect } from "react-router";
-import store from "../../store";
-import {getSignalAnalysis,handleDecisionTreeTable} from "../../actions/signalActions";
-import {C3Chart} from "../c3Chart";
 import renderHTML from 'react-render-html';
-import HeatMap from '../../helpers/heatmap';
-import $ from "jquery";
 import {predictionLabelClick} from "../../helpers/helper";
 
 @connect((store) => {
@@ -24,7 +18,7 @@ export class CardHtml extends React.Component {
    var element = this.props.htmlElement;
    if(this.props.classTag == "highlight"){
        return(
-               <div class="row">
+               <div class="row" style={{margin:"20px 0px"}}>
                <div class="bg-highlight-parent xs-ml-50 xs-mr-50">
                <div class="col-md-12 col-xs-12 bg-highlight"> 
                 {renderHTML(element)}
@@ -41,9 +35,30 @@ export class CardHtml extends React.Component {
                 </div>
            );
    }
-   else {
+   else if(this.props.classTag === "noTable"){
+    return(
+      <div className="noTable xs-mt-15">
+       {renderHTML(element)}
+       </div>
+  ); 
+   }else {
+     let txtAlign = "";
+     if(this.props.htmlElement === "<h4>Sentiment by Concept</h4>" || 
+        this.props.htmlElement === "<h4>Impact on Stock Price</h4>" ||
+        this.props.htmlElement.includes("<h4>Influence of Key Features on ")){
+       txtAlign = "center";
+     }else if(this.props.htmlElement === "<h3>Model Summary</h3>"){
+       element = "<h3 class="+"modelTitle"+">Model Summary</h3>"
+     }else if(this.props.htmlElement === "<h3>Predicting STATUS based on key attributes</h3> "){
+       element = "<h3 class="+"modelTitle"+">Predicting STATUS based on key attributes</h3>"
+     }else if(this.props.htmlElement === "<h3>Key Factors that drive STATUS</h3>"){
+      element = "<h3 class="+"modelTitle"+">Key Factors that drive STATUS</h3>"
+     }
        return(
-               <div>
+               <div style={{marginTop:"15px", 
+                  display:(this.props.htmlElement === "<h3>Top Entities</h3>")?"none":"", 
+                  textAlign:txtAlign
+                }}>
                 {renderHTML(element)}
                 </div>
            );   

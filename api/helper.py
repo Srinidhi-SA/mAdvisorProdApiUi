@@ -1451,7 +1451,7 @@ def encrypt_for_kylo(username, password_encrypted):
     # value = newhash.hexdigest()  # python3
     value = hashlib.sha256(existing_key.encode('utf-8')).hexdigest()  # python3
     return value
-    return value
+    # return value
 
 
 
@@ -1536,7 +1536,10 @@ def get_random_model_id(algo_name):
         "Linear Regression": "LR",
         "Neural Network (Sklearn)": "NN",
         "Neural Network (TensorFlow)": "TF",
-        "Neural Network (PyTorch)": "PT"
+        "Neural Network (PyTorch)": "PT",
+        "LightGBM": "LGBM",
+        "Ensemble": "EN",
+        "Adaboost": "ADAB"
     }
     get_a_random_number = get_a_random_slug()
     return ''.join([algo_map[algo_name], '_', get_a_random_number])
@@ -1557,35 +1560,52 @@ def check_email_id(email=None):
 
 
 def get_mails_from_outlook():
-    ###############################################################################################################
-    r = get_outlook_auth(settings.OUTLOOK_AUTH_CODE, settings.OUTLOOK_REFRESH_TOKEN, settings.OUTLOOK_DETAILS)
-    ###############################################################################################################
-    try:
-        result = r.json()
-        refresh_token = result['refresh_token']
-        access_token = result['access_token']
+    # ###############################################################################################################
+    # r = get_outlook_auth(settings.OUTLOOK_AUTH_CODE, settings.OUTLOOK_REFRESH_TOKEN, settings.OUTLOOK_DETAILS)
+    # ###############################################################################################################
+    from api.models import OutlookToken
 
-        print("Access token received.")
+    token = OutlookToken.objects.first()
+    r = get_outlook_auth(settings.OUTLOOK_AUTH_CODE, settings.OUTLOOK_REFRESH_TOKEN,
+                    settings.OUTLOOK_DETAILS)
+    result = r.json()
+    access_token = result['access_token']
+    refresh_token = settings.OUTLOOK_REFRESH_TOKEN
+
+    if token is None:
+        token = OutlookToken(id=1, refresh_token=settings.OUTLOOK_REFRESH_TOKEN, access_token=result['access_token'])
+        token.save()
+        print("token has been inserted")
+
+    else:
+        token = OutlookToken.objects.first()
+        token.access_token = access_token
+        token.refresh_token = refresh_token
+        token.save()
+        print("token has been updated")
+
+    try:
+        # result = r.json()
+        # refresh_token = result['refresh_token']
+        # access_token = result['access_token']
+
+        print("Access token received.", token.access_token)
         ### Trigger mail receive action  ###
-        result_message = get_outlook_mails(access_token)
+        result_message = get_outlook_mails(token.access_token)
         if 'status' in result_message:
             print("result message not found.")
             return {'status': 'FAILED', 'err': result_message['err']}
         else:
             print("got result message")
             return result_message
-    except Exception:
-        err = "Error retrieving token: {0} - {1}".format(r.status_code, r.text)
+    except Exception as err:
         return {'status': 'FAILED', 'err': err}
 
 def get_outlook_auth(auth_code, refresh_token, outlook_data):
     token_url = 'https://login.microsoftonline.com/' + outlook_data['tenant_id'] + '/oauth2/v2.0/token'
-
-    print(token_url)
-
     post_data_auth_code = {
         'grant_type': 'authorization_code',
-        # 'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'code': auth_code,
         'redirect_uri': outlook_data['redirect_uri'],
         'scope': settings.OUTLOOK_SCOPES,
@@ -1604,7 +1624,6 @@ def get_outlook_auth(auth_code, refresh_token, outlook_data):
         r = requests.post(token_url, data=post_data_refresh_token)
     else:
         r = requests.post(token_url, data=post_data_auth_code)
-
     return r
 
 
@@ -1692,16 +1711,20 @@ def get_my_messages(access_token, info_dict, last_seen=None, message_id=None, id
                         info_dict[u_id]['emailAddress'] = jsondata['value'][i]['from']
                         id = jsondata['value'][i]['id']
 
-                        if 'sub-label' and 'target' in info_dict[u_id]['mail'].lower():
+                        if ('sub-label')or('Sub-label') and ('target')or('Target') in info_dict[u_id]['mail']:
                             # check = re.search(r'sub-label: (\S+)',info_dict[u_id]['mail'].lower())
                             # if check:
                             # info_dict[u_id]['sub_target'] = check.group(1).replace('"','')
                             # info_dict[u_id]['sub_target'] = check.group(1).replace("'","")
-                            for info in info_dict[u_id]['mail'].lower().split('||'):
+                            for info in info_dict[u_id]['mail'].split('||'):
                                 if 'sub-label' in info:
                                     info_dict[u_id]['sub_target'] = info.replace('sub-label', '').replace(':', '').strip()
+                                elif 'Sub-label' in info:
+                                    info_dict[u_id]['sub_target'] = info.replace('Sub-label', '').replace(':', '').strip()
                                 elif 'target' in info:
                                     info_dict[u_id]['target'] = info.replace('target', '').replace(':', '').strip()
+                                elif 'Target' in info:
+                                    info_dict[u_id]['target'] = info.replace('Target', '').replace(':', '').strip()
                         '''if 'target' in info_dict[u_id]['mail'].lower():
                             # check = re.search(r'target: (\S+)',info_dict[u_id]['mail'].lower())
                             # if check:
@@ -1709,7 +1732,7 @@ def get_my_messages(access_token, info_dict, last_seen=None, message_id=None, id
                             # info_dict[u_id]['target'] = info_dict[u_id]['target'].replace("'","")
                             info_dict[u_id]['target'] = info_dict[u_id]['mail'].split('||')[0].replace('target: ',
                                                                                                      '').strip()'''
-                        ''' 
+                        '''
                         if 'sub-label' in info_dict[u_id]['mail'].lower():
                             check = re.search(r'sub-label: (\S+)', info_dict[u_id]['mail'].lower())
                             if check:

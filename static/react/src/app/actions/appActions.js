@@ -1,11 +1,10 @@
-import { API, EMR, STATIC_URL } from "../helpers/env";
+import { API, STATIC_URL } from "../helpers/env";
 import { PERPAGE, isEmpty, getUserDetailsOrRestart, APPSPERPAGE, statusMessages } from "../helpers/helper";
 import store from "../store";
-import Notifications, { notify } from 'react-notify-toast';
+import { notify } from 'react-notify-toast';
 import {
   APPSLOADERPERVALUE,
   LOADERMAXPERVALUE,
-  DEFAULTINTERVAL,
   APPSDEFAULTINTERVAL,
   CUSTOMERDATA,
   HISTORIALDATA,
@@ -27,15 +26,13 @@ import {
   DELETEDEPLOYMENT,
   RENAMESTOCKMODEL
 } from "../helpers/helper";
-import { hideDataPreview, getStockDataSetPreview, showDataPreview, getDataSetPreview } from "./dataActions";
+import { hideDataPreview, getStockDataSetPreview, showDataPreview, getDataSetPreview, paginationFlag } from "./dataActions";
 import { getHeaderWithoutContent } from "./dataUploadActions";
 import renderHTML from 'react-render-html';
 import Dialog from 'react-bootstrap-dialog';
 import React from "react";
 import { showLoading, hideLoading } from 'react-redux-loading-bar';
 import { createcustomAnalysisDetails } from './signalActions';
-import { browserHistory } from 'react-router'
-import { AppsLoader } from "../components/common/AppsLoader";
 
 export var appsInterval = null;
 export var refreshAppsModelInterval = null;
@@ -45,18 +42,14 @@ export function getHeader(token) {
   return { 'Authorization': token, 'Content-Type': 'application/json' };
 }
 
-export function onModeSelection() {
-  return { type: "MODE_SELECTION" }
-}
 export function openModelPopup() {
   return { type: "APPS_MODEL_SHOW_POPUP" }
 }
-
 export function closeModelPopup() {
   return { type: "APPS_MODEL_HIDE_POPUP" }
 }
 
-export function refreshAppsModelList(props) {
+export function refreshAppsModelList() {
   return (dispatch) => {
     if (refreshAppsModelInterval != null)
       clearInterval(refreshAppsModelInterval);
@@ -64,19 +57,18 @@ export function refreshAppsModelList(props) {
       var pageNo = window.location.href.split("=").pop();
       if (pageNo == undefined || isNaN(parseInt(pageNo)))
         pageNo = 1;
-      if (window.location.pathname == "/" + store.getState().apps.currentAppDetails.app_url)
+      let modelLst = store.getState().apps.modelList.data
+      if(modelLst!=undefined && modelLst.filter(i=> (i.status!="SUCCESS" && i.status!="FAILED" && i.completed_percentage!=100) ).length != 0 )
         dispatch(getAppsModelList(parseInt(pageNo)));
-    }
-      , APPSDEFAULTINTERVAL);
+    }, APPSDEFAULTINTERVAL);
   }
 }
-
 
 export function getAllModelList() {
   return (dispatch) => {
     return fetchAllModelList(getUserDetailsOrRestart.get().userToken).then(([response, json]) =>{
         if(response.status === 200){
-            dispatch(fetchAllModelSuccess(json))
+          dispatch(fetchAllModelSuccess(json))
         }else{
           dispatch(fetchAllModelError(json))
         }
@@ -89,7 +81,6 @@ function fetchAllModelList(token) {
       headers: getHeader(token)
   }).then( response => Promise.all([response, response.json()]));
 }
-
 function fetchAllModelError(json) {
   return {
       type: "MODEL_ALL_LIST_ERROR",
@@ -99,22 +90,18 @@ function fetchAllModelError(json) {
 export function fetchAllModelSuccess(doc){
   var data = ""
   if(doc.allModelList !=undefined && doc.allModelList[0]!= undefined){
-      data = doc.allModelList;
+    data = doc.allModelList;
   }
   return {
-      type: "MODEL_ALL_LIST",
-      data,
+      type: "MODEL_ALL_LIST",data,
   }
 }
-
-
-
-
 
 export function getAppsModelList(pageNo) {
   return (dispatch) => {
     return fetchModelList(pageNo, getUserDetailsOrRestart.get().userToken).then(([response, json]) => {
       if (response.status === 200) {
+        dispatch(paginationFlag(false))
         dispatch(fetchModelListSuccess(json))
       } else {
         dispatch(fetchModelListError(json))
@@ -132,45 +119,38 @@ function fetchModelList(pageNo, token) {
     apps_model_sorttype = ""
   else if (apps_model_sorttype == 'desc')
     apps_model_sorttype = "-"
-
-    if (search_element != "" && search_element != null && filter_by_mode!=""&& filter_by_mode!=null) {
-     return fetch(API + '/api/trainer/?app_id=' + store.getState().apps.currentAppId +'&mode=' + filter_by_mode + '&name=' + search_element + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
-        method: 'get',
-        headers: getHeader(token)
-      }).then(response => Promise.all([response, response.json()]));
-    }
-    else if (search_element != "" && search_element != null) {
+  if (search_element != "" && search_element != null && filter_by_mode!=""&& filter_by_mode!=null) {
+    return fetch(API + '/api/trainer/?app_id=' + store.getState().apps.currentAppId +'&mode=' + filter_by_mode + '&name=' + search_element + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
+      method: 'get',
+      headers: getHeader(token)
+    }).then(response => Promise.all([response, response.json()]));
+  }else if (search_element != "" && search_element != null) {
     return fetch(API + '/api/trainer/?app_id=' + store.getState().apps.currentAppId + '&name=' + search_element + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
-    } 
-    else if ((apps_model_sorton != "" && apps_model_sorton != null) && (apps_model_sorttype != null)&& filter_by_mode!=""&& filter_by_mode != null) {
+  }else if ((apps_model_sorton != "" && apps_model_sorton != null) && (apps_model_sorttype != null)&& filter_by_mode!=""&& filter_by_mode != null) {
       return fetch(API + '/api/trainer/?app_id=' + store.getState().apps.currentAppId +'&mode=' + filter_by_mode + '&sorted_by=' + apps_model_sorton + '&ordering=' + apps_model_sorttype + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
         method: 'get',
         headers: getHeader(token)
       }).then(response => Promise.all([response, response.json()]));
-      }else if ((apps_model_sorton != "" && apps_model_sorton != null) && (apps_model_sorttype != null)) {
+  }else if ((apps_model_sorton != "" && apps_model_sorton != null) && (apps_model_sorttype != null)) {
     return fetch(API + '/api/trainer/?app_id=' + store.getState().apps.currentAppId + '&sorted_by=' + apps_model_sorton + '&ordering=' + apps_model_sorttype + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
-    } else if(filter_by_mode!=""&& filter_by_mode!=null){
+  }else if(filter_by_mode!=""&& filter_by_mode!=null){
     return fetch(API + '/api/trainer/?app_id=' + store.getState().apps.currentAppId + '&mode=' + filter_by_mode + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
-   
-    // return fetch(API + '/api/trainer/?app_id=' + store.getState().apps.currentAppId + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
-  }
-  else{
+  }else{
     return fetch(API + '/api/trainer/?app_id=' + store.getState().apps.currentAppId + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
   }
 }
-
 function fetchModelListError(json) {
   return { type: "MODEL_LIST_ERROR", json }
 }
@@ -180,7 +160,6 @@ export function fetchModelListSuccess(doc) {
   var latestModels = doc.top_3
   return { type: "MODEL_LIST", data, latestModels, current_page }
 }
-
 function fetchAlgoListError(json) {
   return { type: "ALGO_LIST_ERROR", json }
 }
@@ -203,6 +182,7 @@ export function getAppsAlgoList(pageNo) {
     })
   }
 }
+
 export function clearAppsAlgoList(){
   return {
     type: "CLEAR_APPS_ALGO_LIST"
@@ -210,9 +190,9 @@ export function clearAppsAlgoList(){
 }
 export function createDeploy(slug) {
   return (dispatch) => {
-    return triggerCreateDeploy(getUserDetailsOrRestart.get().userToken, slug, dispatch).then(([response, json]) => {
+    return triggerCreateDeploy(getUserDetailsOrRestart.get().userToken, slug).then(([response, json]) => {
       if (response.status === 200) {
-        dispatch(createDeploySuccess(json, slug, dispatch))
+        dispatch(createDeploySuccess(json, slug))
         dispatch(getDeploymentList(slug, store.getState().apps.current_page));
       }
       else {
@@ -221,27 +201,23 @@ export function createDeploy(slug) {
     })
   }
 }
-
-function triggerCreateDeploy(token, slug, dispatch) {
+function triggerCreateDeploy(token) {
   let deploy_details = store.getState().apps.deployData;
-  var slug = slug;
   var details = deploy_details;
   return fetch(API + '/api/deploymodel/', {
     method: 'post',
     headers: getHeader(token),
     body: JSON.stringify(details)
-  }).then(response => Promise.all([response, response.json()])).catch(function (error) {
+  }).then(response => Promise.all([response, response.json()])).catch(function () {
     bootbox.alert("Unable to connect to server. Check your connection please try again.")
   });
 }
-
-function createDeploySuccess(slug, dispatch) {
+function createDeploySuccess(slug) {
   return { type: "CREATE_DEPLOY_SUCCESS", slug }
 }
 function createDeployError() {
   return { type: "CREATE_DEPLOY_ERROR" }
 }
-
 function fetchAlgoList(pageNo, token, filtername) {
   let search_element = store.getState().apps.algo_search_element;
   if ((search_element != "" && search_element != null) || (filtername)) {
@@ -250,16 +226,7 @@ function fetchAlgoList(pageNo, token, filtername) {
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
   }
-  //   }else if (filtername) {
-  //     return fetch(API + '/api/trainalgomapping/search/?trainer=' + filtername, {  
-
-  //       method: 'get',
-  //       headers: getHeader(getUserDetailsOrRestart.get().userToken)
-  //   }).then( response => Promise.all([response, response.json()]));
-
-  //  }
   else {
-    // return fetch(API + '/api/score/?app_id=' + store.getState().apps.currentAppId + '&page_number=' + pageNo + '&page_size=' + PERPAGE+ '', {
     return fetch(API + '/api/trainalgomapping/?app_id=' + store.getState().apps.currentAppId + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
@@ -267,8 +234,7 @@ function fetchAlgoList(pageNo, token, filtername) {
   }
 }
 
-
-export function refreshAppsAlgoList(props) {
+export function refreshAppsAlgoList() {
   return (dispatch) => {
     if (refreshAppsModelInterval != null)
       clearInterval(refreshAppsModelInterval);
@@ -277,10 +243,8 @@ export function refreshAppsAlgoList(props) {
       if (pageNo == undefined || isNaN(parseInt(pageNo)))
         pageNo = 1;
       if (window.location.pathname == "/apps/" + store.getState().apps.currentAppDetails.app_url + "/modelManagement")
-
         dispatch(getAppsAlgoList(parseInt(pageNo)));
-    }
-      , APPSDEFAULTINTERVAL);
+    }, APPSDEFAULTINTERVAL);
   }
 }
 
@@ -298,19 +262,12 @@ function deleteAlgo(slug, dialog, dispatch) {
     }
   })
 }
-
-
-
-
 function deleteAlgoAPI(slug) {
-  // return fetch(API + '/api/trainalgomapping/' + slug +'/clone/', {
-  // api/trainalgomapping/<some-slug>/clone/
   return fetch(API + '/api/trainalgomapping/' + slug + '/', {
     method: 'put',
     headers: getHeader(getUserDetailsOrRestart.get().userToken),
     body: JSON.stringify({ deleted: true })
   }).then(response => Promise.all([response, response.json()]));
-
 }
 
 export function handleAlgoDelete(slug, dialog) {
@@ -319,14 +276,12 @@ export function handleAlgoDelete(slug, dialog) {
   }
 }
 
-
-export function getAllProjectList(pageNo,appId) {
+export function getAllProjectList(appId) {
   return (dispatch) => {
     return fetchAllProjectList(appId,getUserDetailsOrRestart.get().userToken).then(([response, json]) => {
       if (response.status === 200) {
         dispatch(fetchAllProjectSuccess(json))
-      }
-      else {
+      }else {
         dispatch(fetchAllProjectError(json))
       }
     })
@@ -342,25 +297,19 @@ function fetchAllProjectList(appId,token) {
 
 export function fetchAllProjectSuccess(doc) {
   var data = ""
-  var slug = "";
   if (doc.data[0] != undefined) {
-    slug = doc.data[0].slug;
     data = doc;
   }
   return {
-    type: "PROJECT_ALL_LIST",
-    data,
-    slug
+    type: "PROJECT_ALL_LIST",data
   }
 }
 
 function fetchAllProjectError(json) {
   return {
-    type: "PROJECT_ALL_LIST_ERROR",
-    json
+    type: "PROJECT_ALL_LIST_ERROR",json
   }
 }
-
 
 function deleteDeployment(slug, algoSlug, dialog, dispatch) {
   dispatch(showLoading());
@@ -416,12 +365,6 @@ export function handleDeploymentDeleteAction(slug, algoSlug, dialog) {
     showDialogBox(slug, dialog, dispatch, DELETEDEPLOYMENT, renderHTML(statusMessages("warning", "Are you sure, you want to delete this deployment?", "small_mascot")), algoSlug)
   }
 }
-
-export function handleDeploymentViewAction(slug) {
-
-}
-
-
 export function handleAlgoClone(slug, dialog) {
   return (dispatch) => {
     showDialogBox(slug, dialog, dispatch, CLONEALGO, renderHTML(statusMessages("warning", "Are you sure, you want to clone this model?", "small_mascot")))
@@ -449,7 +392,6 @@ function cloneAlgoAPI(slug) {
   }).then(response => Promise.all([response, response.json()]));
 }
 
-
 export function getDeploymentList(errandId) {
   return (dispatch) => {
     return fetchDeploymentList(errandId, getUserDetailsOrRestart.get().userToken).then(([response, json]) => {
@@ -461,8 +403,6 @@ export function getDeploymentList(errandId) {
     })
   }
 }
-
-
 function fetchDeploymentList(errandId, token) {
  return fetch(
        API + '/api/deploymodel/search/?deploytrainer=' + errandId, {
@@ -471,8 +411,6 @@ function fetchDeploymentList(errandId, token) {
     }).then(response => Promise.all([response, response.json()]));
 
 }
-
-
 
 function fetchDeploymentListError(json) {
   return { type: "DEPLOYMENT_LIST_ERROR", json }
@@ -490,11 +428,10 @@ export function updateTrainAndTest(trainValue) {
   return { type: "UPDATE_MODEL_RANGE", trainValue, testValue }
 }
 
-export function createModel(modelName, targetVariable, targetLevel,datasetSlug,mode) {//add a mode in analyst mode
- 
+export function createModel(modelName, targetVariable, targetLevel,datasetSlug,mode) {
   return (dispatch) => {
+    dispatch(showCreateModalPopup());
     dispatch(openAppsLoader(APPSLOADERPERVALUE, "Please wait while mAdvisor is creating model... "));
-
     return triggerCreateModel(getUserDetailsOrRestart.get().userToken, modelName, targetVariable, targetLevel,datasetSlug,mode, dispatch).then(([response, json]) => {
       if (response.status === 200) {
         if(json.status === false){
@@ -516,7 +453,6 @@ export function createModel(modelName, targetVariable, targetLevel,datasetSlug,m
 }
 
 function triggerCreateModel(token, modelName, targetVariable, targetLevel, datasetSlug,mode,dispatch) {
-  // let modeType = window.location.pathname.includes("analyst")? "analyst":"autoML";
   var datasetSlug = store.getState().datasets.dataPreview.slug;
   var app_id = store.getState().apps.currentAppId;
   var customDetails = createcustomAnalysisDetails();
@@ -543,7 +479,7 @@ function triggerCreateModel(token, modelName, targetVariable, targetLevel, datas
         "outlierRemoval": store.getState().datasets.outlierRemoval,
       },
       "overallSettings": {
-        "remove_duplicate_attributes": store.getState().datasets.removeDuplicateAttributes,
+        // "remove_duplicate_attributes": store.getState().datasets.removeDuplicateAttributes,
         "remove_duplicate_observations": store.getState().datasets.removeDuplicateObservations,
       },
     }
@@ -577,25 +513,19 @@ function triggerCreateModel(token, modelName, targetVariable, targetLevel, datas
     }
   }
   else {
-    var details = {/*"measures":store.getState().datasets.selectedMeasures,
-                "dimension":store.getState().datasets.selectedDimensions,
-                "timeDimension":store.getState().datasets.selectedTimeDimensions,*/
+    var details = {
       "trainValue": store.getState().apps.trainValue,
       "testValue": store.getState().apps.testValue,
       "targetLevel": targetLevel,
       "targetColumn":targetVariable,
       "variablesSelection": store.getState().datasets.dataPreview.meta_data.uiMetaData.varibaleSelectionArray
-      /* "analysisVariable":targetVariable,
-                'customAnalysisDetails':customDetails["customAnalysisDetails"],
-                 'polarity':customDetails["polarity"],
-                 'uidColumn':customDetails["uidColumn"]*/
     }
   }
   return fetch(API + '/api/trainer/', {
     method: 'post',
     headers: getHeader(token),
     body: JSON.stringify({ "name": modelName, "dataset": datasetSlug, "app_id": app_id, "mode": mode, "config": details })
-  }).then(response => Promise.all([response, response.json()])).catch(function (error) {
+  }).then(response => Promise.all([response, response.json()])).catch(function () {
     dispatch(closeAppsLoaderValue());
     dispatch(updateModelSummaryFlag(false));
     bootbox.alert("Unable to connect to server. Check your connection please try again.")
@@ -655,7 +585,6 @@ function triggerCreateModel(token, modelName, targetVariable, targetLevel, datas
 }
 function createModelSuccess(data, dispatch) {
   var slug = data.slug;
-  dispatch(setAppsLoaderValues(slug,data.completed_percentage,data.status));
   appsInterval = setInterval(function () {
 
     dispatch(getAppsModelSummary(data.slug, true));
@@ -670,8 +599,7 @@ export function createModelSuccessAnalysis(data) {
   }
 }
 
-
-export function refreshAppsScoreList(props) {
+export function refreshAppsScoreList() {
   return (dispatch) => {
     if (refreshAppsScoresInterval != null)
       clearInterval(refreshAppsScoresInterval);
@@ -679,7 +607,9 @@ export function refreshAppsScoreList(props) {
       var pageNo = window.location.href.split("=").pop();
       if (pageNo == undefined || isNaN(parseInt(pageNo)))
         pageNo = 1;
-      if (window.location.pathname == "/apps/" + store.getState().apps.currentAppDetails.slug + "/analyst/scores")
+      let scoreLst = store.getState().apps.scoreList.data
+      if(window.location.pathname == "/apps/" + store.getState().apps.currentAppDetails.slug + "/analyst/scores" && 
+      scoreLst!=undefined && scoreLst.filter(i=> (i.status!="SUCCESS" && i.status!="FAILED" && i.completed_percentage!=100) ).length != 0 )
         dispatch(getAppsScoreList(parseInt(pageNo)));
     }
       , APPSDEFAULTINTERVAL);
@@ -689,6 +619,7 @@ export function getAppsScoreList(pageNo) {
   return (dispatch) => {
     return fetchScoreList(pageNo, getUserDetailsOrRestart.get().userToken).then(([response, json]) => {
       if (response.status === 200) {
+        dispatch(paginationFlag(false))
         dispatch(fetchScoreListSuccess(json));
       } else {
         dispatch(fetchScoreListError(json))
@@ -706,12 +637,17 @@ function fetchScoreList(pageNo, token) {
   else if (apps_score_sorttype == 'desc')
     apps_score_sorttype = "-"
 
-  if (search_element != "" && search_element != null) {
+  if(search_element != "" && search_element != null && apps_score_sorton != "" && apps_score_sorton != null && apps_score_sorttype != null){
+    return fetch(API + '/api/score/?app_id=' + store.getState().apps.currentAppId + '&name=' + search_element + '&sorted_by=' + apps_score_sorton + '&ordering=' + apps_score_sorttype + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
+      method: 'get',
+      headers: getHeader(token)
+    }).then(response => Promise.all([response, response.json()]));
+  }else if(search_element != "" && search_element != null && (apps_score_sorton === "" || apps_score_sorton === null)){
     return fetch(API + '/api/score/?app_id=' + store.getState().apps.currentAppId + '&name=' + search_element + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
-  } else if ((apps_score_sorton != "" && apps_score_sorton != null) && (apps_score_sorttype != null)) {
+  } else if((search_element === "" || search_element === null) && (apps_score_sorton != "" && apps_score_sorton != null) && (apps_score_sorttype != null)) {
     return fetch(API + '/api/score/?app_id=' + store.getState().apps.currentAppId + '&sorted_by=' + apps_score_sorton + '&ordering=' + apps_score_sorttype + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
@@ -722,10 +658,7 @@ function fetchScoreList(pageNo, token) {
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
   }
-
 }
-
-
 
 function fetchScoreListError(json) {
   return { type: "SCORE_LIST_ERROR", json }
@@ -745,21 +678,29 @@ export function hideCreateScorePopup() {
   return { type: "APPS_SCORE_HIDE_POPUP" }
 }
 
-export function getAppsModelSummary(slug, fromCreateModel) {
+export function getAppsModelSummary(slug) {
   return (dispatch) => {
     return fetchModelSummary(getUserDetailsOrRestart.get().userToken, slug).then(([response, json]) => {
       if (response.status === 200) {
-
         if (json.message && json.message == "failed") {
           let myColor = { background: '#00998c', text: "#FFFFFF" };
           notify.show("You are not authorized to view this content.", "custom", 2000, myColor);
           setTimeout(function () {
             window.location.pathname = "/signals";
           }, 2000);
-        }
-
-        else if (json.status == SUCCESS) {
-          (!json.shared) && dispatch(setAppsLoaderValues(json.slug,json.message[json.message.length-1].globalCompletionPercentage,json.status));
+        }else if(json.status === SUCCESS && json.data.model_summary.listOfCards.length===0){
+          bootbox.dialog({
+            message:"Unable to fetch model summary, try creating again.",
+            buttons: {
+                'confirm': {
+                    label: 'Ok',
+                    callback:function(){
+                        window.location.pathname = window.location.pathname.slice(0, window.location.pathname.lastIndexOf('/'));
+                    }
+                },
+            },
+          });
+        }else if(json.status == SUCCESS) {
           if (store.getState().apps.appsLoaderModal && json.message !== null && json.message.length > 0) {
             document.getElementsByClassName("appsPercent")[0].innerHTML = (document.getElementsByClassName("appsPercent")[0].innerText === "In Progress")?"<h2 class="+"text-white"+">"+"100%"+"</h2>":"100%"
             $("#loadingMsgs")[0].innerHTML = "Step " + (json.message.length-3) + ": " + json.message[json.message.length-3].shortExplanation;
@@ -797,7 +738,6 @@ export function getAppsModelSummary(slug, fromCreateModel) {
               dispatch(updateModelIndex(store.getState().apps.modelLoaderidxVal))
             }
             dispatch(updateModelIndexValue(json.message.length));
-            dispatch(setAppsLoaderValues(json.slug,json.message[json.message.length-1].globalCompletionPercentage,json.status));
             dispatch(openAppsLoaderValue( json.message[json.message.length-1].stageCompletionPercentage, json.message[json.message.length-1].shortExplanation));
             dispatch(getAppsModelList("1"));
           }
@@ -857,10 +797,10 @@ export function updateSelectedAlg(name) {
 
 export function createScore(scoreName, targetVariable) {
   return (dispatch) => {
+    dispatch(showCreateModalPopup());
     dispatch(openAppsLoader(APPSLOADERPERVALUE, "Please wait while mAdvisor is scoring your model... "));
     return triggerCreateScore(getUserDetailsOrRestart.get().userToken, scoreName, targetVariable).then(([response, json]) => {
       if (response.status === 200) {
-
         dispatch(createScoreSuccess(json, dispatch))
       } else {
         dispatch(createScoreError(json));
@@ -871,17 +811,10 @@ export function createScore(scoreName, targetVariable) {
   }
 }
 
-function triggerCreateScore(token, scoreName, targetVariable) {
+function triggerCreateScore(token, scoreName) {
   var datasetSlug = store.getState().datasets.dataPreview.slug;
   var app_id = store.getState().apps.currentAppId;
-  var customDetails = createcustomAnalysisDetails();
-  var details = {/*"measures":store.getState().datasets.selectedMeasures,
-                "dimension":store.getState().datasets.selectedDimensions,
-                "timeDimension":store.getState().datasets.selectedTimeDimensions,
-                "analysisVariable":targetVariable,
-                'customAnalysisDetails':customDetails["customAnalysisDetails"],
-                'polarity':customDetails["polarity"],
-                'uidColumn':customDetails["uidColumn"],*/
+  var details = {
     "selectedModel": store.getState().apps.selectedAlgObj,
     "variablesSelection": store.getState().datasets.dataPreview.meta_data.uiMetaData.varibaleSelectionArray,
     "app_id": app_id
@@ -896,9 +829,6 @@ function triggerCreateScore(token, scoreName, targetVariable) {
 function createScoreSuccess(data, dispatch) {
   var slug = data.slug;
   appsInterval = setInterval(function () {
-    /* if(store.getState().apps.appsLoaderPerValue < LOADERMAXPERVALUE){
-                dispatch(updateAppsLoaderValue(store.getState().apps.appsLoaderPerValue+APPSLOADERPERVALUE));
-            }*/
     dispatch(getAppsScoreSummary(data.slug));
     return { type: "CREATE_SCORE_SUCCESS", slug }
   }, APPSDEFAULTINTERVAL);
@@ -916,7 +846,19 @@ export function getAppsScoreSummary(slug) {
             window.location.pathname = "/signals";
           }, 2000);
         }
-
+        else if(json.status == SUCCESS && json.data.listOfCards.length===0){
+          bootbox.dialog({
+            message:"Unable to fetch score summary, try creating again.",
+            buttons: {
+                'confirm': {
+                    label: 'Ok',
+                    callback:function(){
+                        window.location.pathname = window.location.pathname.slice(0, window.location.pathname.lastIndexOf('/'));
+                    }
+                },
+            },
+          });
+        }
         else if (json.status == SUCCESS) {
           if (store.getState().apps.appsLoaderModal && json.message !== null && json.message.length > 0) {
             document.getElementsByClassName("appsPercent")[0].innerHTML = (document.getElementsByClassName("appsPercent")[0].innerText === "In Progress")?"<h2 class="+"text-white"+">"+"100%"+"</h2>":"100%"
@@ -954,7 +896,6 @@ export function getAppsScoreSummary(slug) {
             dispatch(openAppsLoaderValue(json.message[0].stageCompletionPercentage, json.message[0].shortExplanation));
           }
         }
-
       } else {
         dispatch(closeAppsLoaderValue());
         dispatch(updateScoreSummaryFlag(false));
@@ -1015,10 +956,6 @@ export function openAppsLoaderValue(value, text) {
 export function setAppsLoaderText(text){
   return { type: "APPS_LOADED_TEXT",text}
 }
-export function setAppsLoaderValues(slug,value,status){
-  return { type: "SET_APPS_LOADER_MODAL", slug,value,status }
-
-}
 export function closeAppsLoaderValue() {
   return { type: "HIDE_APPS_LOADER_MODAL" }
 }
@@ -1034,9 +971,6 @@ export function openAppsLoader(value, text) {
 }
 export function updateModelSummaryFlag(flag) {
   return { type: "UPDATE_MODEL_FLAG", flag }
-}
-export function updateAnalystModeSelectedFlag(flag) {
-  return { type: "UPDATE_MODE_SELECTION", flag }
 }
 export function updateScoreSummaryFlag(flag) {
   return { type: "UPDATE_SCORE_FLAG", flag }
@@ -1062,7 +996,7 @@ export function saveEditTfInput(editTfInput){
   return { type:"EDIT_TENSORFLOW_INPUT",editTfInput}
 }
 
-export function addTensorFlowArray(id,layerType,name,val) {
+export function addTensorFlowArray(id,layerType) {
     if(layerType==="Dense"){
      var  tensorFlowArray={
         "layer":"Dense",
@@ -1110,7 +1044,6 @@ export function deleteTensorFlowArray(deleteId) {
 export function clearTensorFlowArray() {
   return { type: "CLEAR_LAYERS"}
 }
-
 
 export function getAppsRoboList(pageNo) {
   return (dispatch) => {
@@ -1177,7 +1110,6 @@ export function saveFilesToStore(files, uploadData) {
   } else if (uploadData == EXTERNALDATA) {
     return { type: "EXTERNAL_DATA_UPLOAD_FILE", files }
   }
-
 }
 
 export function uploadFiles(dialog, insightName) {
@@ -1217,16 +1149,13 @@ function triggerDataUpload(token, insightName) {
 function dataUploadFilesSuccess(data, dispatch) {
   var slug = data.slug;
   appsInterval = setInterval(function () {
-    /* if (store.getState().apps.appsLoaderPerValue < LOADERMAXPERVALUE) {
-       dispatch(updateAppsLoaderValue(store.getState().apps.appsLoaderPerValue + APPSLOADERPERVALUE));
-     }*/
     dispatch(getRoboDataset(data.slug));
     return { type: "ROBO_DATA_UPLOAD_SUCCESS", slug }
   }, APPSDEFAULTINTERVAL);
   return { type: "ROBO_DATA_UPLOAD_SUCCESS", slug }
 }
 
-export function dataUploadFilesError(josn) {
+export function dataUploadFilesError(json) {
   return { type: "ROBO_DATA_UPLOAD_ERROR", json }
 }
 export function updateRoboSlug(slug) {
@@ -1244,11 +1173,9 @@ export function getRoboDataset(slug) {
           dispatch(updateRoboAnalysisData(json, "/apps-robo"));
           dispatch(closeAppsLoaderValue());
           dispatch(showRoboDataUploadPreview(true));
-          //dispatch(clearDataPreview());
           dispatch(showDataPreview());
-          //dispatch(getAppsRoboList(1));
         } else if (json.status == FAILED) {
-          bootbox.alert("Your robo insight could not created.Please try later.", function (result) {
+          bootbox.alert("Your robo insight could not created.Please try later.", function () {
             window.history.go(-2);
           });
           clearInterval(appsInterval);
@@ -1270,9 +1197,6 @@ function fetchRoboDataset(token, slug) {
   }).then(response => Promise.all([response, response.json()]));
 }
 
-function fetchRoboSummaryError(json) {
-  return { type: "ROBO_SUMMARY_ERROR", json }
-}
 export function fetchRoboSummarySuccess(doc) {
   var data = doc;
   return { type: "ROBO_SUMMARY_SUCCESS", data }
@@ -1293,8 +1217,6 @@ export function updateRoboAnalysisData(roboData, urlPrefix) {
   var roboSlug = roboData.slug;
   return { type: "ROBO_DATA_ANALYSIS", roboData, urlPrefix, roboSlug }
 }
-
-// showDialogBox(slug, dialog, dispatch, DELETEDEPLOYMENT,algoSlug, renderHTML(statusMessages("warning","Are you sure, you want to delete this model?","small_mascot")))
 
 export function showDialogBox(slug, dialog, dispatch, title, msgText, algoSlug) {
   Dialog.setOptions({ defaultOkLabel: 'Yes', defaultCancelLabel: 'No' })
@@ -1319,7 +1241,6 @@ export function showDialogBox(slug, dialog, dispatch, title, msgText, algoSlug) 
           deleteDeployment(slug, algoSlug, dialog, dispatch)
         else
           deleteScore(slug, dialog, dispatch)
-
       })
     ],
     bsSize: 'medium',
@@ -1332,7 +1253,6 @@ export function showDialogBox(slug, dialog, dispatch, title, msgText, algoSlug) 
 export function handleModelDelete(slug, dialog) {
   return (dispatch) => {
     showDialogBox(slug, dialog, dispatch, DELETEMODEL, renderHTML(statusMessages("warning", "Are you sure, you want to delete model?", "small_mascot")))
-
   }
 }
 function deleteModel(slug, dialog, dispatch) {
@@ -1372,7 +1292,6 @@ export function handleModelRename(slug, dialog, name) {
         </div>
       </div>
     </div>
-
   )
   return (dispatch) => {
     showRenameDialogBox(slug, dialog, dispatch, RENAMEMODEL, customBody)
@@ -1409,8 +1328,27 @@ function showRenameDialogBox(slug, dialog, dispatch, title, customBody) {
           renameInsight(slug, dialog, $("#idRenameInsight").val(), dispatch)
         else if (title == RENAMEAUDIO)
           renameAudio(slug, dialog, $("#idRenameAudio").val(), dispatch)
-        else if (title == RENAMESTOCKMODEL)
+        else if (title == RENAMESTOCKMODEL){
+          dispatch(getAllStockAnalysisList())
+          let letters = /^[0-9a-zA-Z\-_\s]+$/;
+          let allStockList = Object.values(store.getState().apps.allStockAnalysisList);
+          let recentStocks = store.getState().apps.stockAnalysisList.data;
+          if ($("#idRenameStockModel").val() === "") {
+            document.getElementById("ErrorMsg").innerHTML = "Please enter analysis name";
+            showRenameDialogBox(slug, dialog, dispatch, RENAMESTOCKMODEL, customBody)          
+          }else if ($("#idRenameStockModel").val() != "" && $("#idRenameStockModel").val().trim() == "") {
+              document.getElementById("ErrorMsg").innerHTML = "Please enter a valid analysis name";
+              showRenameDialogBox(slug, dialog, dispatch, RENAMESTOCKMODEL, customBody)
+          }else if (letters.test($("#idRenameStockModel").val()) == false){
+            document.getElementById("ErrorMsg").innerHTML = "Please enter analysis name in a correct format. It should not contain special characters .,@,#,$,%,!,&.";
+            showRenameDialogBox(slug, dialog, dispatch, RENAMESTOCKMODEL, customBody)
+          }else if(Object.values(allStockList.concat(recentStocks)).map(i=>i.name.toLowerCase()).includes($("#idRenameStockModel").val().toLowerCase())){
+            document.getElementById("ErrorMsg").innerHTML = "Stock analysis with same name already exists.";
+            showRenameDialogBox(slug, dialog, dispatch, RENAMESTOCKMODEL, customBody)          
+          }else{
           renameStockModel(slug, dialog, $("#idRenameStockModel").val(), dispatch)
+            }
+          }  
         else
           renameScore(slug, dialog, $("#idRenameScore").val(), dispatch)
       })
@@ -1448,7 +1386,6 @@ function renameModelAPI(slug, newName) {
 export function handleScoreDelete(slug, dialog) {
   return (dispatch) => {
     showDialogBox(slug, dialog, dispatch, DELETESCORE, renderHTML(statusMessages("warning", "Are you sure, you want to delete score?", "small_mascot")))
-    //renderHTML(statusMessages("warning","Are you sure, you want to delete score?","small_mascot"))
   }
 }
 function deleteScore(slug, dialog, dispatch) {
@@ -1673,7 +1610,7 @@ export function getAudioFile(slug) {
           dispatch(clearAudioFile());
           dispatch(updateAudioFileSummaryFlag(true));
         } else if (json.status == FAILED) {
-          bootbox.alert("Your audio file could not analysed.Please try later.", function (result) {
+          bootbox.alert("Your audio file could not analysed.Please try later.", function () {
             dispatch(updateAudioFileSummaryFlag(false));
           });
           clearInterval(appsInterval);
@@ -1681,7 +1618,6 @@ export function getAudioFile(slug) {
           dispatch(clearAudioFile());
         }
       } else {
-        //dispatch(closeAppsLoaderValue());
         dispatch(fetchAFSummaryError(json));
       }
     })
@@ -1750,8 +1686,6 @@ export function fetchAudioListSuccess(doc) {
 export function storeAudioSearchElement(search_element) {
   return { type: "SEARCH_AUDIO_FILE", search_element }
 }
-
-//  Rename and Delete Audio files
 
 export function handleAudioDelete(slug, dialog) {
   return (dispatch) => {
@@ -1893,7 +1827,6 @@ export function addMoreStockSymbols() {
         return (prev.id > current.id)
           ? prev
           : current
-
       });
     } else {
       var max = { id: 0 };
@@ -1922,7 +1855,6 @@ export function removeStockSymbolsComponents(data) {
 }
 
 export function handleInputChange(event) {
-
   return (dispatch) => {
     var stockSymbolsArray = store.getState().apps.appsStockSymbolsInputs.slice();
     for (var i = 0; i < stockSymbolsArray.length; i++) {
@@ -1939,6 +1871,7 @@ export function getAppsStockList(pageNo) {
   return (dispatch) => {
     return fetchStockList(pageNo, getUserDetailsOrRestart.get().userToken).then(([response, json]) => {
       if (response.status === 200) {
+        dispatch(paginationFlag(false))
         dispatch(fetchStockListSuccess(json))
       } else {
         dispatch(fetchStockListError(json))
@@ -1956,12 +1889,17 @@ function fetchStockList(pageNo, token) {
   else if (stock_apps_model_sorttype == 'desc')
     stock_apps_model_sorttype = "-"
 
-  if (search_element != "" && search_element != null) {
+  if(search_element != "" && search_element != null && stock_apps_model_sorton != "" && stock_apps_model_sorton != null && stock_apps_model_sorttype != null){
+    return fetch(API + '/api/stockdataset/?name=' + search_element + '&sorted_by=' + stock_apps_model_sorton + '&ordering=' + stock_apps_model_sorttype + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
+      method: 'get',
+      headers: getHeader(token)
+    }).then(response => Promise.all([response, response.json()]));
+  }else if(search_element != "" && search_element != null && (stock_apps_model_sorton === "" || stock_apps_model_sorton === null) && (stock_apps_model_sorttype === "" || stock_apps_model_sorttype === null)) {
     return fetch(API + '/api/stockdataset/?name=' + search_element + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
-  } else if ((stock_apps_model_sorton != "" && stock_apps_model_sorton != null) && (stock_apps_model_sorttype != null)) {
+  } else if((search_element === "" || search_element === null) && (stock_apps_model_sorton != "" && stock_apps_model_sorton != null) && (stock_apps_model_sorttype != null)) {
     return fetch(API + '/api/stockdataset/?sorted_by=' + stock_apps_model_sorton + '&ordering=' + stock_apps_model_sorttype + '&page_number=' + pageNo + '&page_size=' + PERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
@@ -1990,16 +1928,13 @@ export function crawlDataForAnalysis(domains, companies,analysisName,list) {
       return triggerCrawlingAPI(domains, companies,analysisName,list).then(([response, json]) => {
         if (response.status === 200 && json.status!=false) {
           dispatch(updateCreateStockPopup(false))
+          dispatch(showCreateModalPopup());
           dispatch(openAppsLoader(APPSLOADERPERVALUE, "Fetching stock data"));
           dispatch(crawlSuccess(json, dispatch))
         } else {
           dispatch(closeAppsLoaderValue()); 
           $('#extractData').prop('disabled', false);          
-          if(json.exception=='Analysis name already exists')
            document.getElementById("resetMsg").innerText=json.exception
-           else{
-           document.getElementById("resetMsg").innerText='No articles found for selected company and domain'
-           }
         }
       });
     }
@@ -2010,8 +1945,6 @@ export function updateAppsLoaderText(text) {
 }
 export function crawlSuccess(json, dispatch) {
   var slug = json.slug;
-  // dispatch(updateAppsLoaderValue(store.getState().apps.appsLoaderPerValue + APPSLOADERPERVALUE));
-  //dispatch(updateAppsLoaderValue(store.getState().apps.appsLoaderPerValue+APPSLOADERPERVALUE));
   appsInterval = setInterval(function () {
     dispatch(getStockDataSetPreview(slug, appsInterval));
     return { type: "STOCK_CRAWL_SUCCESS", slug }
@@ -2019,12 +1952,10 @@ export function crawlSuccess(json, dispatch) {
   return { type: "STOCK_CRAWL_SUCCESS", slug }
 }
 function triggerCrawlingAPI(domains, companies,analysisName,list) {
-
   var details = {
     "domains": domains,
     "stock_symbols": list,
     "analysis_name": analysisName,
-    // "stock_symbols": store.getState().apps.appsStockSymbolsInputs
 
   }
   return fetch(API + '/api/stockdataset/', {
@@ -2032,7 +1963,6 @@ function triggerCrawlingAPI(domains, companies,analysisName,list) {
     headers: getHeader(getUserDetailsOrRestart.get().userToken),
     body: JSON.stringify({ config: details })
   }).then(response => Promise.all([response, response.json()]));
-
 }
 
 export function hideDataPreviewRightPanels() {
@@ -2084,17 +2014,29 @@ export function getStockAnalysis(slug, appsInterval) {
     return fetchStockAnalysisAPI(getUserDetailsOrRestart.get().userToken, slug).then(([response, json]) => {
       if (response.status === 200) {
         if (json.status == SUCCESS) {
-          if (appsInterval != undefined) {
+          if(Object.keys(json.data).length===0){
+              bootbox.dialog({
+                message:"Sorry, Unable to fetch stock details",
+                buttons: {
+                    'confirm': {
+                        label: 'Ok',
+                        callback:function(){
+                            window.location.pathname = "/apps-stock-advisor";
+                        }
+                    },
+                },
+            });
+          }else if (appsInterval != undefined) {
             clearInterval(appsInterval);
             dispatch(updateRoboAnalysisData(json, "/apps-stock-advisor"));
             dispatch(uploadStockAnalysisFlag(true));
             dispatch(closeAppsLoaderValue());
-          } else {
+          }else {
             dispatch(updateRoboAnalysisData(json, "/apps-stock-advisor"));
             dispatch(uploadStockAnalysisFlag(true));
           }
         } else if (json.status == FAILED) {
-          bootbox.alert("Your stock analysis could not created.Please try later.", function (result) {
+          bootbox.alert("Your stock analysis could not created.Please try later.", function () {
             window.history.go(-2);
           });
           clearInterval(appsInterval);
@@ -2146,37 +2088,39 @@ function fetchConceptListSuccess(concepts) {
 }
 
 function fetchConceptListError(json) {
-  // return {
-  // 	type: "MODEL_LIST_ERROR",
-  // 	json
-  // }
+  return {
+  	type: "MODEL_LIST_ERROR",
+  	json
+  }
 }
 
 export function getAppsList(token, pageNo) {
-
   return (dispatch) => {
     return fetchApps(token, pageNo).then(([response, json]) => {
       if (response.status === 200) {
         dispatch(fetchAppsSuccess(json))
-
       } else {
         dispatch(fetchAppsError(json))
       }
     })
   }
-
 }
 
 function fetchApps(token, pageNo) {
   let search_element = store.getState().apps.storeAppsSearchElement;
   let apps_sortBy = store.getState().apps.storeAppsSortByElement;
   let apps_sortType = store.getState().apps.storeAppsSortType;
-  if (search_element) {
+  if (search_element!="" && apps_sortBy!="" && search_element!=null && apps_sortBy!=null && apps_sortType != null) {
+    return fetch(API + '/api/apps/?app_name=' + search_element + '&sorted_by=' + apps_sortBy + '&ordering=' + apps_sortType + '&page_number=' + pageNo + '&page_size=' + APPSPERPAGE + '', {
+      method: 'get',
+      headers: getHeader(token)
+    }).then(response => Promise.all([response, response.json()]));
+  }else if (search_element!="" && search_element!=null && (apps_sortBy==="" || apps_sortBy===null)){
     return fetch(API + '/api/apps/?app_name=' + search_element + '&page_number=' + pageNo + '&page_size=' + APPSPERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
     }).then(response => Promise.all([response, response.json()]));
-  } else if ((apps_sortBy != "" && apps_sortBy != null) && (apps_sortType != null)) {
+  } else if((search_element==="" || search_element===null) && (apps_sortBy != "" && apps_sortBy != null) && (apps_sortType != null)) {
     return fetch(API + '/api/apps/?sorted_by=' + apps_sortBy + '&ordering=' + apps_sortType + '&page_number=' + pageNo + '&page_size=' + APPSPERPAGE + '', {
       method: 'get',
       headers: getHeader(token)
@@ -2211,24 +2155,19 @@ export function updateAppsFilterList(filter_list) {
 }
 
 export function getAppsFilteredList(token, pageNo) {
-
   return (dispatch) => {
     return fetchFilteredApps(token, pageNo).then(([response, json]) => {
       if (response.status === 200) {
         dispatch(fetchAppsSuccess(json))
-
       } else {
         dispatch(fetchAppsError(json))
       }
     })
   }
-
 }
 
 function fetchFilteredApps(token, pageNo) {
   let filtered_list = store.getState().apps.app_filtered_keywords;
-  //let stringify_list="[\""+filtered_list.toString().replace(/,/g ,"\",\"")+"\"]"
-  //alert(stringify_list)
   return fetch(API + '/api/apps/?filter_fields=' + '[' + filtered_list + ']' + '&page_number=' + pageNo + '&page_size=' + APPSPERPAGE + '', {
     method: 'get',
     headers: getHeader(token)
@@ -2254,7 +2193,6 @@ export function selectMetricAction(name,displayName,selected) {
 
 export function checkCreateScoreToProceed(selectedDataset) {
   var modelSlug = store.getState().apps.modelSlug;
-  var response = "";
   return (dispatch) => {
     return triggerAPI(modelSlug, selectedDataset).then(([response, json]) => {
       if (response.status === 200) {
@@ -2314,13 +2252,10 @@ export function getAppDetails(appSlug, pageNo) {
           dispatch(getAppsModelList(pageNo));
           dispatch(getAppsScoreList(pageNo));
           dispatch(getAppsAlgoList(pageNo));
-
         }
-
       }
     });
   }
-
 }
 
 function triggerAppDetailsAPI(appSlug) {
@@ -2340,9 +2275,9 @@ export function saveSelectedValuesForModel(modelName, targetType, levelCount) {
   return { type: "SAVE_SELECTED_VALES_FOR_MODEL", modelName, targetType, levelCount }
 }
 
-export function getRegressionAppAlgorithmData(slug, appType,mode) {
+export function getRegressionAppAlgorithmData(appType) {
   return (dispatch) => {
-    return triggerRegressionAppAlgorithmAPI(appType,mode).then(([response, json]) => {
+    return triggerRegressionAppAlgorithmAPI(appType).then(([response, json]) => {
       if (response.status === 200) {
         dispatch(saveRegressionAppAlgorithmData(json));
       }
@@ -2351,13 +2286,10 @@ export function getRegressionAppAlgorithmData(slug, appType,mode) {
 }
 
 function triggerRegressionAppAlgorithmAPI(appType) {
+  let selDatasetSlug = store.getState().datasets.selectedDataSet;
   let modeType = window.location.href.includes("analyst")? "analyst" : "autoML"
   let metricVal = store.getState().apps.metricSelected.name;
-  /*return fetch(API + '/api/regression_app/get_algorithm_config_list', {
-    method: 'get',
-    headers: getHeader(getUserDetailsOrRestart.get().userToken)
-  }).then(response => Promise.all([response, response.json()]));*/
-  return fetch(API + '/api/get_app_algorithm_config_list/?app_type=' + appType +'&metric=' +metricVal +'&mode=' +modeType, {
+  return fetch(API + '/api/get_app_algorithm_config_list/?app_type=' + appType +'&metric=' +metricVal +'&mode=' +modeType+'&slug='+selDatasetSlug, {
     method: 'get',
     headers: getHeader(getUserDetailsOrRestart.get().userToken)
   }).then(response => Promise.all([response, response.json()]));
@@ -2370,7 +2302,6 @@ export function parameterTuningVisited(flag) {
 }
 export function updateAlgorithmData(algSlug, parSlug, parVal, type) {
   var AlgorithmCopy = jQuery.extend(true, [], store.getState().apps.regression_algorithm_data_manual);
-
   var newAlgorithm = $.each(AlgorithmCopy, function (key, val) {
     if (val.algorithmSlug == algSlug) {
       if (parSlug === undefined && parVal === undefined) {
@@ -2413,19 +2344,6 @@ export function updateAlgorithmData(algSlug, parSlug, parVal, type) {
                       dat.selected = false;
                   });
               }
-                
-              // $.each(allValues, function (i, dat) {
-              //   if (dat.name == parVal) {
-              //     if (type == "TuningParameter")
-              //       dat.selected = !dat.selected;
-              //     else
-              //       dat.selected = true;
-              //   }
-              //   else if (type == "NonTuningParameter" || type == "TuningOption")
-              //     dat.selected = false;
-              // }
-              // );
-              
             } else {
               val1.acceptedValue = parVal;
             }
@@ -2469,9 +2387,6 @@ export function clearPyTorchValues(){
     type : "CLEAR_PYTORCH_VALUES"
   }
 }
-export function setDefaultAutomatic(data) {
-  return { type: "SET_REGRESSION_DEFAULT_AUTOMATIC", data }
-}
 export function updateRegressionTechnique(name) {
   return { type: "UPDATE_REGRESSION_TECHNIQUE", name }
 }
@@ -2506,10 +2421,7 @@ export function updateCurrentAppByID(app_id, pageNo) {
           dispatch(getAppsModelList(pageNo));
           dispatch(getAppsScoreList(pageNo));
           dispatch(getAppsAlgoList(pageNo));
-
-
         }
-
       }
     });
   }
@@ -2581,13 +2493,13 @@ export function checkSaveSelectedModels(checkObj, isChecked) {
 }
 export function sendSelectedAlgorithms(slug) {
   return (dispatch) => {
-    return triggerSendSelectedAlgorithmApi(getUserDetailsOrRestart.get().userToken, slug).then(([response, json]) => {
+    return triggerSendSelectedAlgorithmApi(slug).then(([response, json]) => {
       //if (response.status === 200)
       //dispatch(saveSelectedModels(json, dispatch))
     })
   }
 }
-function triggerSendSelectedAlgorithmApi(token, slug) {
+function triggerSendSelectedAlgorithmApi(slug) {
   var selectedAlgos = store.getState().apps.algorithmsList;
   var data = { "model_list": selectedAlgos };
   return fetch(API + '/api/trainer/' + slug + '/save_selected_hyperparameter_models/', {
@@ -2603,10 +2515,42 @@ export function clearSelectedModelsCount() {
   var count = 0;
   return { type: "CLEAR_SELECT_MODEL_COUNT", count }
 }
+
+export function getAllStockAnalysisList() {
+  return (dispatch) => {
+    return fetchAllStockAnalysisList(getUserDetailsOrRestart.get().userToken).then(([response, json]) =>{
+        if(response.status === 200){
+            dispatch(fetchAllStockAnalysisSuccess(json))
+        }else{
+          dispatch(fetchAllStockAnalysisError(json))
+        }
+    })
+  }
+}
+function fetchAllStockAnalysisList(token) {
+  return fetch(API + '/api/stockdataset/get_all_stockssense/', {
+      method: 'get',
+      headers: getHeader(token)
+  }).then( response => Promise.all([response, response.json()]));
+}
+
+export function fetchAllStockAnalysisSuccess(doc){
+  var data = ""
+  if(doc.allStockList[0]!= undefined){
+      data = doc.allStockList;
+  }
+  return {
+      type: "ALL_STOCK_ANALYSIS_LIST",data,
+  }
+}
+function fetchAllStockAnalysisError(json) {
+  return {
+      type: "ALL_STOCK_ANALYSIS_LIST_ERROR",json
+  }
+}
 export function handleStockDelete(slug, dialog) {
   return (dispatch) => {
     showDialogBox(slug, dialog, dispatch, DELETESTOCKMODEL, renderHTML(statusMessages("warning", "Are you sure, you want to delete analysis?", "small_mascot")))
-
   }
 }
 function deleteStockModel(slug, dialog, dispatch) {
@@ -2629,9 +2573,7 @@ function deleteStockModelAPI(slug) {
     headers: getHeader(getUserDetailsOrRestart.get().userToken),
     body: JSON.stringify({ deleted: true })
   }).then(response => Promise.all([response, response.json()]));
-
 }
-
 
 export function handleStockModelRename(slug, dialog, name) {
   const customBody = (
@@ -2643,13 +2585,14 @@ export function handleStockModelRename(slug, dialog, name) {
         <div className="form-group">
           <label for="idRenameStockModel" className="control-label">Enter a new Name</label>
           <input className="form-control" id="idRenameStockModel" type="text" defaultValue={name} />
+          <div className="text-danger" id="ErrorMsg"></div>
         </div>
       </div>
     </div>
-
   )
   return (dispatch) => {
     showRenameDialogBox(slug, dialog, dispatch, RENAMESTOCKMODEL, customBody)
+    dispatch(getAllStockAnalysisList())
   }
 }
 function renameStockModel(slug, dialog, newName, dispatch) {
@@ -2657,6 +2600,7 @@ function renameStockModel(slug, dialog, newName, dispatch) {
   Dialog.resetOptions();
   return renameStockModelAPI(slug, newName).then(([response, json]) => {
     if (response.status === 200) {
+      dispatch(getAllStockAnalysisList())
       dispatch(getAppsStockList(store.getState().apps.current_page));
       dispatch(hideLoading());
     } else {
@@ -2672,7 +2616,6 @@ function renameStockModelAPI(slug, newName) {
     headers: getHeader(getUserDetailsOrRestart.get().userToken),
     body: JSON.stringify({ name: newName })
   }).then(response => Promise.all([response, response.json()]));
-
 }
 export function crawlSuccessAnalysis(data) {
   return (dispatch) => {
@@ -2698,10 +2641,11 @@ export function refreshStockAppsList(props) {
         stockAppLocation = "/apps-stock-advisor";
       else
         stockAppLocation = "/" + store.getState().apps.currentAppDetails.app_url+"/";
-      if (window.location.pathname == stockAppLocation)
+      let stockLst = store.getState().apps.stockAnalysisList.data;
+      if(window.location.pathname == stockAppLocation && stockLst!=undefined && 
+        stockLst.filter(i=> (i.status!="SUCCESS" && i.status!="FAILED" && i.completed_percentage!=100) ).length != 0 )
         dispatch(getAppsStockList(parseInt(pageNo)));
-    }
-      , APPSDEFAULTINTERVAL);
+    }, APPSDEFAULTINTERVAL);
   }
 }
 export function callStockAnalysisApi(slug) {
@@ -2714,7 +2658,7 @@ export function roboDataUploadFilesSuccessAnalysis(data) {
     dispatch(dataUploadFilesSuccess(data, dispatch))
   }
 }
-export function refreshRoboInsightsList(props) {
+export function refreshRoboInsightsList() {
   return (dispatch) => {
     if (refreshAppsModelInterval != null)
       clearInterval(refreshAppsModelInterval);
@@ -2724,44 +2668,47 @@ export function refreshRoboInsightsList(props) {
         pageNo = 1;
       if (window.location.pathname == "/apps-robo")
         dispatch(getAppsRoboList(parseInt(pageNo)));
-    }
-      , APPSDEFAULTINTERVAL);
+    }, APPSDEFAULTINTERVAL);
   }
 }
 
 export function getDeployPreview(pageNo, filtername) {
   return (dispatch) => {
-
     return fetchAlgoList(pageNo, getUserDetailsOrRestart.get().userToken, filtername).then(([response, json]) => {
-
       if (response.status === 200) {
         dispatch(fetchAlgoListSuccess(json, dispatch))
-      }
-      else {
+      }else {
         dispatch(fetchAlgoListError(json))
       }
     });
   }
 }
 
-function fetchDeployPreview(filtername, dispatch) {
-
-  return fetch(API + '/api/trainalgomapping/search/?trainer=' + filtername, {
-
-    method: 'get',
-    headers: getHeader(getUserDetailsOrRestart.get().userToken)
-  }).then(response => Promise.all([response, response.json()])).catch(function (error) {
-
-    let msg = statusMessages("error", "Unable to connect to server. Check your connection please try again.", "small_mascot")
-    bootbox.alert(msg)
-  });
+export function showCreateModalPopup() {
+  return { type: "SHOW_CREATE_MODAL_LOADER" }
 }
-//get preview data
-
-function fetchDeployPreviewError(json) {
-  return { type: "DEPLOY_PREVIEW_ERROR", json }
+export function setLoaderFlagAction(flag){
+  return {
+    type:"SET_LOADER_FLAG",flag
+  }
 }
-export function fetchDeployPreviewSuccess(doc) {
-  var data = doc;
-  return { type: "DEPLOY_PREVIEW", data }
+export function modifyActiveAlgorithmTab(slug){
+  return{
+    type:"ACTIVE_ALGORITHM_SLUG",slug
+  }
+}
+export function clearScoreSummary(){
+  return{
+    type:"CLEAR_SCORE_SUMMARY"
+  }
+}
+export function clearModelList(){
+  return{
+    type: "CLEAR_MODEL_LIST"
+  }
+}
+export function clearScoreList(){
+  return{
+    type:"CLEAR_SCORE_LIST"
+  }
 }

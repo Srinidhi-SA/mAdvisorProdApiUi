@@ -125,7 +125,6 @@ def fetch_news_sentiments_from_newsapi(stock, domains):
                 url=news['final_url'], content_of_the_url=short_desc)
 
         if nl_understanding:
-            # nl_understanding = json.loads(nl_understanding.decode("utf-8"))
             keywords = nl_understanding.result.get('keywords', [])
             for keyword in keywords:
                 keyword['text'] = preprocess_keyword(keyword['text'])
@@ -164,12 +163,8 @@ def fetch_news_article_from_nasdaq(stock):
                 }
             )
 
-    # from multiprocessing import Pool
-    # p = Pool(5)
-    # content_array = p.map(crawl_obj.fetch_content, urls)
 
     for content in content_array:
-        # content = crawl_obj.get_data(url)
         if content:
             json_list = process.process_nasdaq_news_article(
                 content['url'],
@@ -198,10 +193,6 @@ def fetch_news_article_from_nasdaq(stock):
             news['sentiment'] = nl_understanding.get('sentiment', [])
             stock_news_with_sentiments.append(news)
 
-    # from api.models import StockDataset
-    # sdd = StockDataset.objects.get(slug='asd23-yzce2di0zg')
-    # stock_news_with_sentiments = json.loads(sdd.crawled_data)[stock][stock]
-
     return stock_news_with_sentiments
 
 
@@ -210,7 +201,6 @@ def write_to_news_data_in_folder(stockName, data):
     import csv
     path = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) + "/scripts/data/" + self.slug + "/"
-    # file_path = path + stockName + "." + type
     file_path = path + stockName + "." + type
     with open(file_path, "wb") as file_to_write_on:
         if 'csv' == type:
@@ -240,17 +230,36 @@ def get_nasdaq_news_articles(stock_symbol):
     return urls
 
 
-def convert_crawled_data_to_metadata_format(news_data, other_details=None, slug=None):
+def convert_crawled_data_to_metadata_format(news_data, other_details=None, slug=None, symbols=None,
+                                            created_at=None, start_date=None):
     if other_details is None:
         type = 'news_data'
     else:
         type = other_details['type']
 
     headers = find_headers(news_data=news_data, type=type, slug=slug)
+    headersUI = headers.copy()
     columnData = get_column_data_for_metadata(headers, slug=slug)
+    columnDataUI = columnData.copy()
     sampleData = get_sample_data(news_data=news_data, type=type, slug=slug)
+    sampleDataUI = get_sample_data_ui(news_data=news_data, type=type, slug=slug)
     metaData = get_metaData(news_data=news_data, slug=slug)
+    metaData_UI = metaData.copy()
     transformation_settings = get_transformation_settings(slug=slug)
+    headers_UI = []
+    for case in headersUI:
+        temp = {}
+        temp['name'] = case['name'].capitalize() if case['name'] != 'short_desc' else 'Short description'
+        temp['slug'] = case['slug']
+        headers_UI.append(temp)
+    startDate = start_date.date().strftime('%b %d,%Y') if start_date else '-'
+    endDate = created_at.date().strftime('%b %d,%Y')
+    for i in columnDataUI:
+        i['name'] = i['name'].capitalize() if i['name'] != 'short_desc' else 'Short description'
+    companyNames = {"displayName": "Company Names", "name": "companyNames", "value": symbols, "display": True}
+    timeline = {"displayName": "Timeline", "name": "timeline", "value": str(startDate) + ' to ' + str(endDate), "display": True}
+    metaData_UI.append(timeline)
+    metaData_UI.append(companyNames)
 
     metadata_json = {
         'scriptMetaData': {
@@ -261,11 +270,11 @@ def convert_crawled_data_to_metadata_format(news_data, other_details=None, slug=
         },
         'uiMetaData': {
             'advanced_settings': {},
-            'columnDataUI': columnData,
-            'headersUI': headers,
-            'metaDataUI': metaData,
+            'columnDataUI': columnDataUI,
+            'headersUI': headers_UI,
+            'metaDataUI': metaData_UI,
             'possibleAnalysis': '',
-            'sampleDataUI': sampleData,
+            'sampleDataUI': sampleDataUI,
             'transformation_settings': transformation_settings,
             'varibaleSelectionArray': []
         }
@@ -348,6 +357,23 @@ def get_sample_data(news_data, type='historical_data', slug=None):
     for row in news_data:
         row_data = []
         for key in headers_name:
+            row_data.append(row[key])
+        sampleData.append(row_data)
+    return sampleData
+
+
+def get_sample_data_ui(news_data, type='historical_data', slug=None):
+    required_fields = get_required_fields(type)
+    headers_name = list(news_data[0].keys())
+    headers_name = list(set(required_fields).intersection(set(headers_name)))
+    sampleData = []
+    for row in news_data:
+        row_data = []
+        for key in headers_name:
+            if key == 'date':
+                from datetime import datetime
+                date = datetime.strptime(row[key], "%Y%m%d").date().strftime('%b %d,%Y')
+                row[key] = date
             row_data.append(row[key])
         sampleData.append(row_data)
     return sampleData

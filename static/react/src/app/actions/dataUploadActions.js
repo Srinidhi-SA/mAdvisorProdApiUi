@@ -1,8 +1,8 @@
 import {API} from "../helpers/env";
 import {DYNAMICLOADERINTERVAL} from "../helpers/helper";
 import store from "../store";
-import {FILEUPLOAD, DULOADERPERVALUE, LOADERMAXPERVALUE, DEFAULTINTERVAL, DULOADERPERMSG,getUserDetailsOrRestart} from "../helpers/helper";
-import {getDataList, getDataSetPreview, updateDatasetName, openDULoaderPopup,hideDULoaderPopup} from "./dataActions";
+import { DULOADERPERVALUE, LOADERMAXPERVALUE, DEFAULTINTERVAL, DULOADERPERMSG,getUserDetailsOrRestart} from "../helpers/helper";
+import { getDataSetPreview, updateDatasetName, openDULoaderPopup,hideDULoaderPopup} from "./dataActions";
 import {closeModelPopup} from "./appActions";
 
 export var dataPreviewInterval = null;
@@ -17,7 +17,7 @@ export function dataUpload() {
     var dbDetails = {};
     return (dispatch) => {
     if (store.getState().dataSource.selectedDataSrcType == "fileUpload") {
-        if(store.getState().dataSource.fileUpload.name){
+        if(store.getState().dataSource.fileUpload[0].name!=""){
             $("#fileErrorMsg").addClass("visibilityHidden");
             dispatch(uploadFileOrDB());
         }else{
@@ -27,8 +27,6 @@ export function dataUpload() {
     }
     else{
         var elements = document.getElementById(store.getState().dataSource.selectedDataSrcType).elements;
-        //$("#MySQLdatasetname").tooltip({'trigger':'focus', 'title': 'Password tooltip'});
-       // var dataSrc = store.getState().dataSource.selectedDataSrcType;
         var flag = false;
         for(var i=0;i<elements.length;i++){
            
@@ -40,8 +38,6 @@ export function dataUpload() {
                 $("#"+elements[i].id).css("border-color","#e0e0e0");
                 dbDetails[elements[i].name] = elements[i].value
             }
-
-
         }
         if(!flag)
         dispatch(uploadFileOrDB(dbDetails));
@@ -59,12 +55,9 @@ function uploadFileOrDB(dbDetails){
         dispatch(openDULoaderPopup());
 
         return triggerDataUpload(getUserDetailsOrRestart.get().userToken,dbDetails).then(([response, json]) => {
-
-          // dispatch(dataUploadLoaderValue(json.message[json.message.length-1].globalCompletionPercentage));
-          // dispatch()
           if (response.status === 200) {
-            dispatch(updateDatasetName(json.slug))
-            dispatch(dataUploadSuccess(json, dispatch))
+              dispatch(updateDatasetName(json[0].slug))
+              dispatch(dataUploadSuccess(json[0], dispatch))
           } else {
             dispatch(dataUploadError(json))
           }
@@ -78,39 +71,22 @@ function uploadFileOrDB(dbDetails){
 }
 function triggerDataUpload(token,dbDetails) {
   if (store.getState().dataSource.selectedDataSrcType == "fileUpload") {
-
     var data = new FormData();
-    data.append("input_file", store.getState().dataSource.fileUpload);
+    for (var x = 0; x < store.getState().dataSource.fileUpload.length; x++) {
+      data.append("input_file", store.getState().dataSource.fileUpload[x]);
+    }
     return fetch(API + '/api/datasets/', {
       method: 'post',
       headers: getHeaderWithoutContent(token),
       body: data
     }).then(response => Promise.all([response, response.json()]));
   } else {
-
-    var host = store.getState().dataSource.db_host;
-    var port = store.getState().dataSource.db_port;
-    var username = store.getState().dataSource.db_username;
-    var password = store.getState().dataSource.db_password;
-    var tablename = store.getState().dataSource.db_tablename;
-    var schema = store.getState().dataSource.db_schema;
-    var dataSourceDetails = {
-      "host": host,
-      "port": port,
-      "schema": schema,
-      "username": username,
-      "tablename": tablename,
-      "password": password,
-      "datasourceType": store.getState().dataSource.selectedDataSrcType
-    }
     return fetch(API + '/api/datasets/', {
       method: 'post',
       headers: getHeader(token),
       body: JSON.stringify({datasource_details: dbDetails, datasource_type: store.getState().dataSource.selectedDataSrcType})
     }).then(response => Promise.all([response, response.json()]));
-
   }
-
 }
 
 export function triggerDataUploadAnalysis(data,percentage, message){
@@ -135,7 +111,6 @@ function dataUploadSuccess(data, dispatch) {
   }
   else{
     dataPreviewInterval = setInterval(function() {
-
         let loading_message = store.getState().datasets.loading_message
         dispatch(getDataSetPreview(data.slug, dataPreviewInterval));
         if (store.getState().datasets.dULoaderValue < LOADERMAXPERVALUE) {
@@ -144,7 +119,6 @@ function dataUploadSuccess(data, dispatch) {
           msg = loading_message[loading_message.length - 1].shortExplanation
         }
             loaderVal = loading_message[loading_message.length - 1].globalCompletionPercentage
-            //alert(msg + "  " + loaderVal)
           }
           dispatch(dataUploadLoaderValue(loaderVal));
           dispatch(dataUploadLoaderMsg(msg));
@@ -162,7 +136,7 @@ function dataUploadSuccess(data, dispatch) {
   }
 }
 
-export function dataUploadError(josn) {
+export function dataUploadError(json) {
   return {type: "DATA_UPLOAD_TO_SERVER_ERROR", json}
 }
 
@@ -190,10 +164,7 @@ export function dataUploadLoaderMsg(message) {
   return {type: "DATA_UPLOAD_LOADER_MSG", message}
 }
 
-//for subsetting
-
 export function dataSubsetting(subsetRq, slug) {
-
   return (dispatch) => {
    dispatch(dataUploadLoaderValue(DULOADERPERVALUE));
     dispatch(dataUploadLoaderMsg(DULOADERPERMSG));
@@ -218,8 +189,8 @@ function triggerDataSubsetting(subsetRq, slug) {
     headers: getHeader(getUserDetailsOrRestart.get().userToken),
     body: JSON.stringify(subsetRq)
   }).then(response => Promise.all([response, response.json()]));
-
 }
+
 function updateSubsetSuccess(subsetRs) {
   return {type: "SUBSETTED_DATASET", subsetRs}
 }

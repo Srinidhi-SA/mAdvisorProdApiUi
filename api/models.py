@@ -18,7 +18,6 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.template.defaultfilters import slugify
 from api.helper import update_stock_sense_message
-# from api.helper import CustomImageField
 
 from .StockAdvisor.crawling.common_utils import get_regex
 from .StockAdvisor.crawling.crawl_util import crawl_extract, \
@@ -70,7 +69,7 @@ class Job(models.Model):
     deleted = models.BooleanField(default=False)
     submitted_by = models.ForeignKey(User, null=False)
     error_report = models.TextField(default="{}")
-    messages =  models.TextField(default="{}")
+    messages = models.TextField(default="{}")
     message_log = models.TextField(default="{}")
 
     def generate_slug(self):
@@ -162,7 +161,6 @@ class Dataset(models.Model):
     auto_update_duration = models.IntegerField(default=99999)
 
     input_file = models.FileField(upload_to='datasets', null=True)
-    # image = CustomImageField(upload_to='photos', null=True)
     datasource_type = models.CharField(max_length=100, null=True)
     datasource_details = models.TextField(default="{}")
     preview = models.TextField(default="{}")
@@ -260,7 +258,6 @@ class Dataset(models.Model):
 
         if job is None:
             self.status = "FAILED"
-            # self.status = "INPROGRESS"
         else:
             self.status = "INPROGRESS"
 
@@ -428,7 +425,7 @@ class Dataset(models.Model):
         return "/home/marlabs" + self.get_hdfs_relative_path()
 
     def get_input_file(self):
-
+        print("File Upload in container logs- New Demo 12-04-2021")
         if self.datasource_type in ['file', 'fileUpload']:
             type = self.file_remote
             if type == 'emr_file':
@@ -444,7 +441,7 @@ class Dataset(models.Model):
 
                     path = str(self.input_file)
                     if '/home/' in path:
-                        file_name=path.split("/config")[-1]
+                        file_name = path.split("/config")[-1]
                     else:
                         file_name = os.path.join('/media/', str(self.input_file))
                 else:
@@ -978,9 +975,15 @@ class Trainer(models.Model):
                     if (self.app_id in settings.REGRESSION_APP_ID):
                         config['config']["ALGORITHM_SETTING"][4].update({'tensorflow_params': configUI['TENSORFLOW']})
                     elif self.app_id in settings.CLASSIFICATION_APP_ID:
-                        config['config']["ALGORITHM_SETTING"][5].update({'tensorflow_params': configUI['TENSORFLOW']})
+                        if config['config']["ALGORITHM_SETTING"][4]["algorithmName"] == "Neural Network (TensorFlow)":
+                            config['config']["ALGORITHM_SETTING"][4].update(
+                                {'tensorflow_params': configUI['TENSORFLOW']})
+                        else:
+                            config['config']["ALGORITHM_SETTING"][5].update(
+                                {'tensorflow_params': configUI['TENSORFLOW']})
                 if 'nnptc_parameters' in config['config']["ALGORITHM_SETTING"][6]:
-                    config['config']["ALGORITHM_SETTING"][6]['nnptc_parameters'] = convert2native(config['config']["ALGORITHM_SETTING"][6]['nnptc_parameters'])
+                    config['config']["ALGORITHM_SETTING"][6]['nnptc_parameters'] = convert2native(
+                        config['config']["ALGORITHM_SETTING"][6]['nnptc_parameters'])
             except Exception as err:
                 print("Error adding Tesorflow Selection to Algorithm")
                 print(err)
@@ -1606,7 +1609,8 @@ class Trainer(models.Model):
                         try:
                             overall_settings[0]['number_of_bins'] = int(overall_data['numberOfBins'])
                             for col in column_data:
-                                if column_data[col]['columnType'] == 'measure' and column_data[col]['selected'] == True and column_data[col]['targetColumn'] == False:
+                                if column_data[col]['columnType'] == 'measure' and column_data[col][
+                                    'selected'] == True and column_data[col]['targetColumn'] == False:
                                     self.collect_column_slugs_which_all_got_transformations.append(col)
                                     self.generate_new_column_name_based_on_transformation(
                                         column_data[col],
@@ -2138,10 +2142,10 @@ class Score(models.Model):
     def add_to_job(self, *args, **kwargs):
         jobConfig = self.generate_config(*args, **kwargs)
         job = job_submission(
-                instance=self,
-                jobConfig=jobConfig,
-                job_type='score'
-            )
+            instance=self,
+            jobConfig=jobConfig,
+            job_type='score'
+        )
         self.job = job
         if job is None:
             self.status = "FAILED"
@@ -2700,6 +2704,7 @@ class StockDataset(models.Model):
     name = models.CharField(max_length=100, null=True)
     stock_symbols = models.CharField(max_length=500, null=True, blank=True)
     domains = models.CharField(max_length=500, null=True, blank=True, default='')
+    start_date = models.DateTimeField(auto_now_add=False, null=True)
     slug = models.SlugField(null=True, max_length=300)
     auto_update = models.BooleanField(default=False)
 
@@ -2780,7 +2785,10 @@ class StockDataset(models.Model):
             other_details={
                 'type': 'news_data'
             },
-            slug=self.slug
+            slug=self.slug,
+            symbols=self.get_stock_company_names(),
+            created_at=self.created_at,
+            start_date=self.start_date
         )
 
         meta_data['extracted_data'] = extracted_data
@@ -2907,7 +2915,6 @@ class StockDataset(models.Model):
         return hadoop_path
 
     def generate_meta_data(self):
-        print("generate_meta_data " * 3)
         self.meta_data = self.crawl_news_data()
         self.job.messages = update_stock_sense_message(self.job, "ml-work")
         self.job.save()
@@ -3012,7 +3019,8 @@ class StockDataset(models.Model):
     def get_stock_company_names(self):
         # list_of_stock = self.stock_symbols.split(', ')
         # return [stock_name.lower() for stock_name in list_of_stock]
-        return [value for value in self.stock_symbols.values()]
+        stock_symbols = json.loads(self.stock_symbols)
+        return [value for value in stock_symbols.values()]
 
     def get_brief_info(self):
         brief_info = dict()
@@ -3054,8 +3062,8 @@ class StockDataset(models.Model):
         THIS_SERVER_DETAILS = settings.THIS_SERVER_DETAILS
 
         data_api = "{3}://{0}/api/stockdatasetfiles/{2}/".format(THIS_SERVER_DETAILS.get('host'),
-                                                                        THIS_SERVER_DETAILS.get('port'),
-                                                                        self.get_data_api(), protocol)
+                                                                 THIS_SERVER_DETAILS.get('port'),
+                                                                 self.get_data_api(), protocol)
 
         hdfs_path = self.get_hdfs_relative_path()
 
@@ -3086,7 +3094,7 @@ class StockDataset(models.Model):
         return str(self.slug)
 
     def add_to_job(self, *args, **kwargs):
-        job_type='stockAdvisor'
+        job_type = 'stockAdvisor'
         job = Job()
         job.name = "-".join([job_type, self.slug])
         job.job_type = job_type
@@ -5254,7 +5262,7 @@ node1 = {
                     x="DATE",
                     axes={},
                     widthPercent=100,
-                    title="Stock Performance Analysis"
+                    title="Stock Performance Trend"
                 ),
                 change_data_in_chart(
                     data=article_by_source,
@@ -5632,3 +5640,18 @@ class DatasetScoreDeployment(models.Model):
     def save(self, *args, **kwargs):
         self.generate_slug()
         super(DatasetScoreDeployment, self).save(*args, **kwargs)
+
+
+class OutlookToken(models.Model):
+    refresh_token = models.CharField(max_length=5000, null=True)
+    access_token = models.CharField(max_length=5000, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
+
+    class Meta(object):
+        ordering = ['-created_at']
+        # Uncomment line below for permission details
+        permissions = settings.PERMISSIONS_RELATED_TO_TRAINER
+
+    def __str__(self):
+        return " : ".join(["{}".format(x) for x in [self.refresh_token, self.created_at]])

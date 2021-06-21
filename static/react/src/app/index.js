@@ -1,16 +1,14 @@
 import React from "react";
 import {render} from "react-dom";
-import {BrowserRouter, Route, Switch, IndexRoute} from "react-router-dom";
+import {BrowserRouter, Route, Switch} from "react-router-dom";
 import {Provider} from "react-redux"
 import store from "./store"
 import {Main} from "./components/Main";
 import {Home} from "./components/Home";
 import {Login} from "./components/Login";
-import {Settings} from "./components/settings/Settings";
 import {Apps} from "./components/apps/Apps";
 import {Data} from "./components/data/Data";
 import {DataPreview} from "./components/data/DataPreview";
-import {Stories} from "./components/stories/Stories";
 import {Signals} from "./components/signals/Signals";
 import {Signal} from "./components/signals/Signal";
 import {SignalDocumentMode} from "./components/signals/SignalDocumentMode";
@@ -38,7 +36,6 @@ import {AppsStockDocumentMode} from "./components/apps/AppsStockDocumentMode";
 import {DataPreviewLeftPanel} from "./components/data/DataPreviewLeftPanel";
 import {ModelAlgorithmSelection} from "./components/apps/ModelAlgorithmSelection";
 import {AlgorithmSelection} from "./components/apps/AlgorithmSelection";
-import {RegressionAppList} from "./components/apps/RegressionAppList";
 import {getUserDetailsOrRestart} from "./helpers/helper";
 import {Redirect} from "react-router-dom";
 import {APPS_ALLOWED} from "./helpers/env.js";
@@ -59,21 +56,18 @@ class App extends React.Component {
       return false
   }
   hasDataRoutePermission() {
-    //alert("working!!!")
     if (getUserDetailsOrRestart.get().view_data_permission == "true")
       return true
     else
       return false
   }
   hasTrainerRoutePermission() {
-    //check for apps exposure also
     if (getUserDetailsOrRestart.get().view_trainer_permission == "true"&&APPS_ALLOWED==true)
       return true
     else
       return false
   }
   hasScoreRoutePermission() {
-    //alert("working!!!")
     if (getUserDetailsOrRestart.get().view_score_permission == "true"&&APPS_ALLOWED==true)
       return true
     else
@@ -81,7 +75,7 @@ class App extends React.Component {
   }
   render() {
     sessionStorage.url = window.location.pathname;
-    //we need to do like this as BrowserRouter dont pass history and props if we call components directly
+    //we need to do this as BrowserRouter dont pass history and props if we call components directly
     //signal related routing permissions
     const signals = (props) => {
       if (this.hasSignalRoutePermission()) {
@@ -93,13 +87,25 @@ class App extends React.Component {
             break;
           case "/signals/:slug":
             {
-              return (<Signal {...props}/>)
+             var list=store.getState().signals.allSignalList
+            if(Object.values(list).map(i=>i.slug).includes(props.match.params.slug)||store.getState().signals.selectedSignal==props.match.params.slug||Object.keys(list).length === 0|| store.getState().signals.signalAnalysis.slug==props.match.params.slug)
+              {
+                if(document.getElementsByClassName('cst-fSize')[0]!=undefined && document.getElementsByClassName('cst-fSize')[0].innerText=="I want to analyze")
+                return (<DataPreview {...props}/>)
+                else 
+                return (<Signal {...props}/>)
+              }else{
+                return (<DataPreview {...props}/>)
+              }
             }
             break;
           case "/signals/:slug/:l1":
-            {
+          {
+          if(props.match.params.l1=="createSignal") 
+              return (<VariableSelection {...props}/>)
+            else
               return (<OverViewPage {...props}/>)
-            }
+          }
             break;
           case "/signals/:slug/:l1/:l2/:l3":
             {
@@ -161,17 +167,7 @@ class App extends React.Component {
               return (<VariableSelection {...props}/>)
             }
             break;
-          case "/apps/:AppId/models/data/:slug":
-            {
-              return (<DataPreview {...props}/>)
-            }
-            break;
             case "/apps/:AppId/analyst/models/data/:slug":
-            {
-              return (<DataPreview {...props}/>)
-            }
-            break;
-          case "/apps/:AppId/models/:modelSlug/data/:slug":
             {
               return (<DataPreview {...props}/>)
             }
@@ -289,7 +285,7 @@ class App extends React.Component {
 
       } else if (this.hasTrainerRoutePermission()) {
         let model_url = "/apps"
-        var modeSelected= store.getState().apps.analystModeSelectedFlag?'/analyst' :'/autoML'
+        var modeSelected= window.location.pathname.includes("autoML")?'/autoML':'/analyst'
         if (props.match.params.AppId)
           model_url = "/apps/" + props.match.params.AppId +modeSelected+"/models"
         return (<Redirect to={model_url}/>)
@@ -297,35 +293,6 @@ class App extends React.Component {
         return (<Redirect to="/apps"/>)
       }
     }
-
-
-
-    const modelmanagement = (props) => {
-      if (this.hasScoreRoutePermission()) {
-        switch (props.match.path) {
-          case "/apps/" + props.match.params.AppId + "/analyst/modelManagement/:slug":
-            {
-              return (<ModelSummary {...props}/>)
-            }
-            break;
-            case "/apps/" + props.match.params.AppId + "/analyst/modelManagement":
-            {
-              return (<ModelManagement {...props}/>)
-            }
-            break;
-            
-        }
-
-      } else if (this.hasTrainerRoutePermission()) {
-        let model_url = "/apps"
-        if (props.match.params.AppId)
-          model_url = "/apps/" + props.match.params.AppId + "/analyst/modelManagement"
-        return (<Redirect to={model_url}/>)
-      } else {
-        return (<Redirect to="/apps"/>)
-      }
-    }
-
 
     return (
       <BrowserRouter>
@@ -349,8 +316,6 @@ class App extends React.Component {
             <Route exact path="/signals/:slug/:l1/:l2" render={signals}/>
             <Route path="/variableselection" component={VariableSelection}/>
             <Route path="/signaldocumentMode/:slug" render={signals}/>
-            <Route path="/settings" component={Settings}/>
-            <Route path="/stories" component={Stories}/>
             <Route exact path="/data" render={data}/>
             <Route exact path="/data/:slug" render={data}/>
             <Route exact path="/apps" component={AppsPanel}/>
@@ -359,12 +324,9 @@ class App extends React.Component {
             <Route exact path="/apps/:AppId/analyst/models" render={trainer}/>
             <Route exact path="/apps/:AppId/autoML/scores" render={score}/>
             <Route exact path="/apps/:AppId/analyst/scores" render={score}/>
-            <Route exact path="/apps/:AppId/models?page=:slug" render={trainer}/>
-            <Route exact path="/apps/:AppId/scores?page=:slug" render={score}/>
             <Route exact path="/apps/:AppId/analyst/scores?page=:slug" render={score}/>
             <Route exact path="/apps/:AppId/autoML/models/data/:slug/createModel" component={ModelVariableSelection}/>
             <Route exact path="/apps/:AppId/analyst/models/data/:slug/createModel" component={ModelVariableSelection}/>
-            <Route exact path="/apps/:AppId/models/:slug" render={trainer}/>
             <Route exact path="/apps/:AppId/autoML/models/:slug" render={trainer}/>
             <Route exact path="/apps/:AppId/analyst/models/:slug" render={trainer}/>
             <Route exact path="/apps/:AppId/autoML/scores/:slug" render={score}/>
@@ -372,10 +334,7 @@ class App extends React.Component {
             <Route exact path="/apps/:AppId/autoML/models/:modelSlug/data/:slug/createScore" component={ScoreVariableSelection}/>
             <Route exact path="/apps/:AppId/analyst/models/:modelSlug/data/:slug/createScore" component={ScoreVariableSelection}/>
             <Route exact path="/data?page=:slug" render={data}/>
-            <Route exact path="/data_cleansing/:slug" render={data}/>
-            <Route exact path="/feature-engineering/:slug" render={data}/>
-            <Route exact path="/apps/:AppId/scores/:slug" render={score}/>
-            <Route exact path="/data/:slug/createSignal" render={data}/>
+            <Route exact path="/data/:slug/createSignal" render={data}/>   
             <Route exact path="/signals?page=:slug" render={signals}/>
             <Route exact path="/signals?search=:slug" render={signals}/>
             <Route exact path="/apps/:AppId/analyst/models/data/:slug" render={data}/>
@@ -399,29 +358,17 @@ class App extends React.Component {
             <Route exact path="/apps-stock-advisor/:slug/:l1/:l2/:l3" component={OverViewPage}/>
             <Route exact path="/apps-stock-advisor/:slug/:l1/:l2" component={OverViewPage}/>
             <Route exact path="/apps-stock-document-mode/:slug" component={AppsStockDocumentMode}/>
-            <Route exact path="/apps/:AppId/scores/:slug/dataPreview" render={score}/>
             <Route exact path="/apps/:AppId/analyst/scores/:slug/dataPreview" render={score}/>
             <Route exact path="/apps/:AppId/autoML/scores/:slug/dataPreview" render={score}/>
             <Route exact path="/apps/:AppId/analyst/models/data/:slug/createModel/algorithmSelection" component={AlgorithmSelection}/>
             <Route exact path="/apps/:AppId/analyst/models/data/:slug/createModel/parameterTuning" component={ModelAlgorithmSelection}/>
             <Route exact path="/apps/:AppId/modeSelection" component={ModelBuildingModeSelection}/>
-            <Route exact path="/apps/:AppId/models/data/:slug/createModel/dataCleansing" component={DataCleansing}/>
-            <Route exact path="/apps/:AppId/models/data/:slug/createModel/featureEngineering" component={FeatureEngineering}/>
             <Route exact path="/apps/:AppId/analyst/models/data/:slug/createModel/dataCleansing" component={DataCleansing}/>
             <Route exact path="/apps/:AppId/analyst/models/data/:slug/createModel/featureEngineering" component={FeatureEngineering}/>
             <Route exact path="/apps/:AppId/analyst/modelManagement" component={ModelManagement}/>
             <Route exact path="/apps/:AppId/autoML/modelManagement" component={ModelManagement}/>
             <Route exact path="/apps/:AppId/autoML/modelManagement/:slug" component={ModelSummary}/> 
             <Route exact path="/apps/:AppId/analyst/modelManagement/:slug" component={ModelSummary}/> 
-            <Route exact path="/apps-regression" component={RegressionAppList}/>
-            <Route exact path="/apps-regression-score" component={RegressionAppList}/>
-            <Route exact path="/apps-regression/scores" component={RegressionAppList}/>
-            <Route exact path="/apps-regression/models" component={RegressionAppList}/>
-            <Route exact path="/apps-regression-score/:slug" component={OverViewPage}/>
-            <Route exact path="/apps-regression-score/:slug/:l1" component={OverViewPage}/>
-            <Route exact path="/apps-regression-score/:slug/:l1/:l2/:l3" component={OverViewPage}/>
-            <Route exact path="/apps-regression-score/:slug/:l1/:l2" component={OverViewPage}/>
-            <Route exact path="/apps-regression-score-document/:slug" component={SignalDocumentMode}/>
             <Route exact path="/datamgmt" component={KyloMenuList}/>
             <Route exact path="/datamgmt/selected_menu/:kylo_url" component={SampleFrame}/>
         </Main>

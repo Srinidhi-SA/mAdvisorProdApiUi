@@ -200,7 +200,6 @@ def fetch_news_articles(cur_stock, domains):
         all_news = newsapi.get_everything(q=str(cur_stock),
                                           language='en',
                                           domains=domains,
-                                          # sort_by='publishedAt',
                                           sort_by='relevancy',
                                           from_param=from_date,
                                           to=today,
@@ -209,13 +208,15 @@ def fetch_news_articles(cur_stock, domains):
         if all_news is not None and len(all_news):
             articles.extend(all_news['articles'])
     except NewsAPIException as ex:
-        print("Method failed with message: " + ex.get_message())
-        return None
-    return articles
+        # print("Method failed with message: " + ex.get_message())
+        return None, ex.get_message()
+    if not articles:
+        return None, [cur_stock]
+    return articles, None
 
 
 def fetch_stock_news_from_newsapi(cur_stock, domains):
-    articles = fetch_news_articles(cur_stock, domains)
+    articles, _ = fetch_news_articles(cur_stock, domains)
     histogram = {}
     for i, item in enumerate(articles):
         item['time'] = "".join(item['publishedAt'].split("T")[0].split("-"))

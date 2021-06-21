@@ -1,50 +1,44 @@
 # -*- coding: utf-8 -*-
 import base64
-import os
+import re
+import sys
 import numpy as np
 from collections import OrderedDict
-
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "ocr/ITE/My_ProjectOCR_2427.json"
-from google.protobuf.json_format import MessageToJson
-from ocr.ITE.scripts.apis import fetch_google_response
 import cv2
-import json
 import os
 import matplotlib as mpl
+from PIL import ImageFont, ImageDraw, Image
+from shapely.geometry import Point
+from shapely.geometry.polygon import Polygon
 
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "ocr/ITE/My_ProjectOCR_2427.json"
 if os.environ.get('DISPLAY', '') == '':
-    print('no display found. Using non-interactive Agg backend')
     mpl.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+
+"""Recursive dept expansion required for recursive functions i.e fonttunning()"""
+sys.setrecursionlimit(10 ** 9)
 
 
-# from ocr.ITE.scripts.info_mapping import update_u1
+def fonttunning(text, font, fontsize, width):
+    """Estimation of font size reduction by reducing 0.001 in each iteration until no overlap for OPENCV plots"""
+    textSize = cv2.getTextSize(text=text, fontFace=font, fontScale=fontsize, thickness=1)  # ((61, 22), 10)
+    if width < textSize[0][0]:
+        fontsize = fontsize - (textSize[0][0] - width) * 0.001
+        return fonttunning(text, font, fontsize, width)
+    else:
+        return fontsize
 
 
 class ui_corrections:
 
-    def __init__(self, mask, final_json, google_response, google_response2, image_path=None, image_directory_name=None,
+    def __init__(self, mask, final_json, image_path=None, image_directory_name=None,
                  database_path=None):
         self.mask = mask
         self.final_json = final_json
         # self.google_response = self.optimised_fetch_google_response(image_path, image_directory_name, database_path)
-        self.google_response = google_response
-        self.google_response2 = google_response2
+        # self.google_response = google_response
+        # self.google_response2 = google_response2
         self.image_name = image_directory_name
-
-    def optimised_fetch_google_response(self, image_path, image_directory_name, database_path):
-        try:
-            with open(database_path + image_directory_name + "/" + image_directory_name + "_google_response.json") as f:
-                google_response_as_string = json.load(f)
-            return google_response_as_string
-        except:
-            google_response = fetch_google_response(image_path)
-            serialized = json.loads(MessageToJson(google_response))
-            with open(database_path + image_directory_name + "/" + image_directory_name + "_google_response.json",
-                      'w') as outfile:
-                json.dump(serialized, outfile)
-            return serialized
 
     def check_if_centroid_inbetween_p1_p3(self, centroid, p1, p3):
         if p1[0] <= centroid[0] <= p3[0] and p1[1] <= centroid[1] <= p3[1]:
@@ -57,7 +51,7 @@ class ui_corrections:
         loi = []
         for line in analysis['lines']:
             for word in line['words']:
-                if 'confidence' in word.keys():
+                if word['confidence'] < 0.8:
                     try:
                         loi.append({word['text']: [word['boundingBox'][:2], word['boundingBox'][4:6]]})
                     except:
@@ -96,43 +90,16 @@ class ui_corrections:
 
         return p1, p2, p3, p4, p5, p6, p7, p8
 
-    def confidence_filter(self, response, user_input):
+    def confidence_filter(self, analysis, user_input):  # 90
         loi = []
-        for page in response["fullTextAnnotation"]["pages"]:
-            for block in page["blocks"]:
-                for paragraph in block["paragraphs"]:
-                    for word in paragraph["words"]:
-                        word_text = ''.join([symbol["text"] for symbol in word["symbols"]])
-                        #                        print(word["confidence"])
-                        if word["confidence"] < user_input:
-                            loi.append({word_text: [
-                                [word["boundingBox"]["vertices"][0]["x"], word["boundingBox"]["vertices"][0]["y"]],
-                                [word["boundingBox"]["vertices"][2]["x"], word["boundingBox"]["vertices"][2]["y"]]]})
-
+        for line in analysis['lines']:
+            for word in line['words']:
+                if word['confidence'] < user_input:
+                    try:
+                        loi.append({word['text']: [word['boundingBox'][:2], word['boundingBox'][4:6]]})
+                    except:
+                        pass
         return loi
-
-    def final_json_para_corrections(self, final_json):
-        paradata = final_json["paragraphs"]
-        for i in paradata:
-            for j in paradata[i]:
-                for k in range(len(j["words"])):
-                    temp = {j["words"][k]["text"]: {"p1": j["words"][k]["boundingBox"][0:2],
-                                                    "p3": j["words"][k]["boundingBox"][4:6]}}
-                    j["words"][k].clear()
-                    j["words"][k].update(temp)
-        final_json["paragraphs"] = paradata
-        return final_json
-
-    """def default_all_words_flag_to_false(self, final_json):
-        for k in final_json["paragraphs"]:
-            for l in final_json["paragraphs"][k]:
-                for m in l['words']:
-                    m.update({"flag": "False"})
-        for k in final_json["tables"]:
-            for l in final_json["tables"][k]:
-                for m in final_json["tables"][k][l]["words"]:
-                    m.update({"flag": "False"})
-        return final_json"""
 
     def default_all_words_flag_to_false(self, final_json):
         for para in final_json["paragraphs"]:
@@ -212,6 +179,70 @@ class ui_corrections:
         # update_u1(upd, image_name)
         return upd, final_json
 
+    def flag_words_to_plot_custom(self, final_json, metadata):
+        final_dict = {}
+        for field in metadata['custom_fields']:
+            p1, p3 = metadata['custom_fields'][field]['BoundingBox']
+
+            final_dict[field] = []
+            for k in final_json["paragraphs"]:
+                for l in final_json["paragraphs"][k]:
+                    for m in l:
+                        p1w = m['boundingBox']["p1"]
+                        p3w = m['boundingBox']["p3"]
+                        p2w = [p3[0], p1[1]]
+                        p4w = [p1[0], p3[1]]
+                        bb = p1w + p2w + p3w + p4w
+                        x, y = self.calculate_centroid(p1w, p3w)
+
+                        if self.check_if_centroid_inbetween_p1_p3([x, y], p1, p3):
+                            m['flag'] = True
+                            final_dict[field].append((m['text'], bb))
+                        elif 'flag' in list(m.keys()):
+                            pass
+                        else:
+                            m['flag'] = False
+
+            for k in final_json["tables"]:
+                for l in final_json["tables"][k]:
+                    for m in final_json["tables"][k][l]["words"]:
+                        p1w = m['boundingBox']["p1"]
+                        p3w = m['boundingBox']["p3"]
+                        p2w = [p3[0], p1[1]]
+                        p4w = [p1[0], p3[1]]
+                        bb = p1w + p2w + p3w + p4w
+                        x, y = self.calculate_centroid(p1w, p3w)
+
+                        if self.check_if_centroid_inbetween_p1_p3([x, y], p1, p3):
+                            m['flag'] = True
+                            final_dict[field].append((m['text'], bb))
+                        elif 'flag' in list(m.keys()):
+                            pass
+                        else:
+                            m['flag'] = False
+
+        for label in final_dict:
+
+            words = final_dict[label]
+            label_final = []
+
+            #            depths = list(map(lambda x : x[1][1] , words))
+            depths = list(map(lambda x: int((x[1][1] + x[1][5]) * 0.5), words))
+            groups_formed = dict(enumerate(grouper(depths), 1))
+
+            for group in groups_formed:
+                sub_line = []
+                for word in words:
+                    #                    if word[1][1] in groups_formed[group]:
+                    if int((word[1][1] + word[1][5]) * 0.5) in groups_formed[group]:
+                        sub_line.append(word[0])
+                    else:
+                        pass
+                label_final.append(' '.join(sub_line))
+
+            final_dict[label] = '\n'.join(label_final)
+        return final_dict, final_json
+
     def highlight_word(self, img, text, cord, fontScale,
                        font):  # text = "Some text in a box!"  img = np.zeros((500, 500))
 
@@ -285,80 +316,7 @@ class ui_corrections:
         #        fontscale_final = (fontScale_default+fontscale)*0.5
         return fontscale, font
 
-    """def render_flagged_image(self, final_json_to_flag, texted_image, gen_image):
-
-        #        texted_image = self.adjust_gamma(texted_image, gamma=0.2)
-        height, width, _ = texted_image.shape
-        area = height * width
-        #        fontScale = 0.6
-        #        print (fontScale)
-
-        if 'paragraphs' in final_json_to_flag:
-            for k in final_json_to_flag["paragraphs"]:
-                for l in final_json_to_flag["paragraphs"][k]:
-                    for m in l:
-                        p1 = m['boundingBox']["p1"]
-                        p3 = m['boundingBox']["p3"]
-                        p2 = [p3[0], p1[1]]
-                        p4 = [p1[0], p3[1]]
-                        text = m['text']
-                        #
-                        print('WORD : ', text, ' BoundingBox Height : ', abs(p3[1] - p1[1]))
-                        print('WORD : ', text, ' BoundingBox Width / len of word : ', abs(p3[0] - p1[0]) / len(text))
-
-                        print('*' * 10)
-
-                        height, ratio = abs(p3[1] - p1[1]), abs(p3[0] - p1[0]) / len(text)
-                        fontScale, font = self.get_optimal_params(height, ratio, area)
-                        #                        print('FONT : ',font)
-                        if m['flag'] == True:
-                            texted_image = self.highlight_word(texted_image, text,
-                                                               (p4[0] + 3, int((p4[1] + p1[1]) * 0.5)), fontScale, font)
-                        else:
-                            cv2.putText(texted_image, text, (p4[0] + 3, int((p4[1] + p1[1]) * 0.5)), font, fontScale,
-                                        (0, 0, 0), 1, cv2.LINE_AA)
-        else:
-            pass
-
-        if 'tables' in final_json_to_flag:
-            for k in final_json_to_flag["tables"]:
-                for l in final_json_to_flag["tables"][k]:
-                    for m in final_json_to_flag["tables"][k][l]["words"]:
-                        p1 = m["boundingBox"]["p1"]
-                        p3 = m["boundingBox"]["p3"]
-                        p2 = [p3[0], p1[1]]
-                        p4 = [p1[0], p3[1]]
-                        text = m["text"]
-                        vertices = [p1, p2, p3, p4]
-
-                        #                        print('WORD : ',text , ' BoundingBox Height : ',abs(p3[1]-p1[1]))
-                        #                        print('WORD : ',text , ' BoundingBox Width / len of word : ',abs(p3[0]-p1[0])/len(text))
-                        #
-                        #                        print('*'*10)
-
-                        height, ratio = abs(p3[1] - p1[1]), abs(p3[0] - p1[0]) / len(text)
-                        fontScale, font = self.get_optimal_params(height, ratio, area)
-                        #                        print('FONT : ',font)
-                        if m['flag'] == True:
-                            texted_image = self.highlight_word(texted_image, text,
-                                                               (p4[0] + 3, int((p4[1] + p1[1]) * 0.5)), fontScale, font)
-                        else:
-                            cv2.putText(texted_image, text, (p4[0] + 3, int((p4[1] + p1[1]) * 0.5)), font, fontScale,
-                                        (0, 0, 0), 1, cv2.LINE_AA)
-        else:
-            pass
-
-        #        int((p4[1]+p1[1])*0.5)
-
-        if area < 1000 * 1000:
-            pass
-
-        else:
-            texted_image = self.adjust_gamma(texted_image, gamma=0.4)
-        cv2.imwrite(gen_image, texted_image)
-        return"""
-
-    def render_flagged_image(self, final_json_to_flag, mask, gen_image):  # plain_mask = False
+    """def render_flagged_image(self, final_json_to_flag, mask, gen_image):  # plain_mask = False
 
         #        texted_image = self.adjust_gamma(texted_image, gamma=0.2)
         height, width, _ = mask.shape
@@ -439,6 +397,203 @@ class ui_corrections:
             mask = self.adjust_gamma(mask, gamma=0.4)
         mask = dynamic_cavas(mask)
         cv2.imwrite(gen_image, mask)
+        return"""
+
+    def render_flagged_image2(self, final_json, mask, gen_image_path, language_input):
+
+        #        texted_image = self.adjust_gamma(texted_image, gamma=0.2)
+        height, width = mask.shape[:2]
+        #        area = height * width
+
+        language_fonts = {"Korean": 'gulim.ttf', 'Chinese-1': 'simsun.ttc', 'Japanese': 'TakaoGothic.ttf'}
+        if language_input in language_fonts.keys():
+            fontpath = "ocr/ITE/fonts/" + language_fonts[language_input]
+        else:
+            fontpath = "ocr/ITE/fonts/FreeMono.ttf"
+
+        font = ImageFont.truetype(fontpath, 12)
+
+        img_pil = Image.fromarray(mask)
+        draw = ImageDraw.Draw(img_pil)
+        b, g, r, a = 0, 0, 0, 0
+
+        if 'paragraphs' in final_json:
+            for k in final_json["paragraphs"]:
+                for l in final_json["paragraphs"][k]:
+                    for m in l:
+                        p1 = m['boundingBox']["p1"]
+                        p3 = m['boundingBox']["p3"]
+                        p2 = [p3[0], p1[1]]
+                        p4 = [p1[0], p3[1]]
+                        text = m['text']
+
+                        draw.text((p1[0] + 3, p1[1]), text, font=font, fill=(b, g, r, a))
+
+
+        else:
+            pass
+
+        if 'tables' in final_json:
+            for k in final_json["tables"]:
+                for l in final_json["tables"][k]:
+                    for m in final_json["tables"][k][l]["words"]:
+                        p1 = m["boundingBox"]["p1"]
+                        p3 = m["boundingBox"]["p3"]
+                        p2 = [p3[0], p1[1]]
+                        p4 = [p1[0], p3[1]]
+                        text = m["text"]
+
+                        draw.text((p1[0] + 3, p1[1]), text, font=font, fill=(b, g, r, a))
+        else:
+            pass
+        mask = np.array(img_pil)
+        mask = self.adjust_gamma(mask, gamma=0.4)
+        mask = dynamic_cavas(mask)
+
+        cv2.imwrite(gen_image_path, mask)
+        return
+
+    def render_flagged_image(self, final_json_to_flag, mask, gen_image_path):
+        words_with_special_characters = []
+        #        texted_image = self.adjust_gamma(texted_image, gamma=0.2)
+        height, width = mask.shape[:2]
+        area = height * width
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        if 'paragraphs' in final_json_to_flag:
+            for k in final_json_to_flag["paragraphs"]:
+                for l in final_json_to_flag["paragraphs"][k]:
+                    for m in l:
+                        p1 = m['boundingBox']["p1"]
+                        p3 = m['boundingBox']["p3"]
+                        p2 = [p3[0], p1[1]]
+                        p4 = [p1[0], p3[1]]
+                        text = m['text']
+                        x = re.findall(r'[^\x00-\x7F]', text)
+                        if x:
+                            words_with_special_characters.append(m)
+                        else:
+                            heightoftext = p4[1] - p1[1]
+                            widthoftext = p2[0] - p1[0]
+                            fontScale = (heightoftext / 4.5) * 0.1
+                            fontScale = fonttunning(text, font, fontScale, widthoftext)
+                            textSize = cv2.getTextSize(text=text, fontFace=font, fontScale=fontScale, thickness=1)
+                            anchorX = p4[0] + 3
+                            anchorY = int((p4[1] + p1[1]) * 0.5)
+                            anchorXforcleaning = (anchorX, anchorY - 1 - textSize[0][1])
+                            anchorYforcleaning = (anchorX + textSize[0][0], anchorY + 5)
+                            cv2.rectangle(mask, anchorXforcleaning, anchorYforcleaning, (255, 255, 255), -1)
+                            # height, ratio = abs(
+                            #     p3[1] - p1[1]), abs(p3[0] - p1[0]) / len(text)
+                            # fontScale, font = self.get_optimal_params(
+                            #     height, ratio, area)
+                            #                        print('FONT : ',font)
+                            if m['flag']:
+                                mask = self.highlight_word(
+                                    mask, text, (anchorX, anchorY), fontScale, font)
+                            else:
+                                cv2.putText(mask,
+                                            text,
+                                            (anchorX, anchorY),
+                                            font,
+                                            fontScale,
+                                            (0,
+                                             0,
+                                             0),
+                                            1,
+                                            cv2.LINE_AA)
+
+
+        else:
+            pass
+
+        if 'tables' in final_json_to_flag:
+            for k in final_json_to_flag["tables"]:
+                for l in final_json_to_flag["tables"][k]:
+                    for m in final_json_to_flag["tables"][k][l]["words"]:
+                        p1 = m["boundingBox"]["p1"]
+                        p3 = m["boundingBox"]["p3"]
+                        p2 = [p3[0], p1[1]]
+                        p4 = [p1[0], p3[1]]
+                        text = m["text"]
+                        #                        print(text)
+                        vertices = [p1, p2, p3, p4]
+
+                        x = re.findall(r'[^\x00-\x7F]', text)
+                        if x:
+                            words_with_special_characters.append(m)
+                        else:
+                            heightoftext = p4[1] - p1[1]
+                            widthoftext = p2[0] - p1[0]
+                            fontScale = (heightoftext / 4.5) * 0.1
+                            fontScale = fonttunning(text, font, fontScale, widthoftext)
+                            textSize = cv2.getTextSize(text=text, fontFace=font, fontScale=fontScale, thickness=1)
+                            anchorX = p4[0] + 3
+                            anchorY = int((p4[1] + p1[1]) * 0.5)
+                            anchorXforcleaning = (anchorX, anchorY - 1 - textSize[0][1])
+                            anchorYforcleaning = (anchorX + textSize[0][0], anchorY + 5)
+                            cv2.rectangle(mask, anchorXforcleaning, anchorYforcleaning, (255, 255, 255), -1)
+
+                            if m['flag']:
+                                mask = self.highlight_word(
+                                    mask, text, (anchorX, anchorY), fontScale, font)
+                            else:
+                                cv2.putText(mask,
+                                            text,
+                                            (anchorX, anchorY),
+                                            font,
+                                            fontScale,
+                                            (0,
+                                             0,
+                                             0),
+                                            1,
+                                            cv2.LINE_AA)
+        else:
+            pass
+
+        #        int((p4[1]+p1[1])*0.5)
+
+        if area < 1000 * 1000:
+            pass
+
+        else:
+            mask = self.adjust_gamma(mask, gamma=0.4)
+        if len(words_with_special_characters) > 0:
+            img_pil = Image.fromarray(mask)
+            draw = ImageDraw.Draw(img_pil)
+            for except_word in words_with_special_characters:
+                # print(words_with_special_characters)
+                b, g, r, a = 0, 0, 0, 0
+                fontpath = os.path.join(os.getcwd(), "ocr", "ITE", "fonts", "DejaVuSans.ttf")
+                p1 = except_word['boundingBox']["p1"]
+                p3 = except_word['boundingBox']["p3"]
+                p2 = [p3[0], p1[1]]
+                p4 = [p1[0], p3[1]]
+                heightofbox = p4[1] - p1[1]
+                widthofbox = p2[0] - p1[0]
+                if heightofbox != 0:
+                    font_size = int(heightofbox * .65)
+                else:
+                    font_size = 7
+                text = except_word['text']
+                font_custom = ImageFont.truetype(fontpath, font_size)
+                # yanchor_cord = int(p1[1])-int(heightofbox/4)
+                if except_word['flag'] == True:
+                    draw.text((p4[0] + 3, int((p4[1] + p1[1]) * 0.5)), text, fill=(0, 0, 0), font=font_custom,
+                              anchor="ls", stroke_fill=(0, 255, 255, 255), stroke_width=5)
+                else:
+                    # draw.rectangle(((p1[0],p1[1]),(p3[0],p3[1])),fill=(0, 255, 255, 255))
+                    try:
+                        draw.text((p4[0] + 3, int((p4[1] + p1[1]) * 0.5)), text, fill=(0, 0, 0), font=font_custom,
+                                anchor="ls")
+                    except Exception as e:
+                        pass
+                # img_pil.show()
+            mask = np.array(img_pil)
+        else:
+            pass
+        mask = dynamic_cavas(mask)
+        cv2.imwrite(gen_image_path, mask)
         return
 
     def document_confidence(self, analysis):
@@ -448,30 +603,36 @@ class ui_corrections:
             for word in line['words']:
                 word_count = word_count + 1
 
-                if 'confidence' in word.keys():
+                if word['confidence'] < 0.8:
                     error = error + 1
                 else:
                     pass
-
-        document_accuracy = round((word_count - error) / word_count, 2)
+        try:
+            document_accuracy = round((word_count - error) / word_count, 2)
+        except ZeroDivisionError:
+            document_accuracy = 0
         return document_accuracy, word_count
 
+    def document_fields_count(self, analysis):
+        word_count = 0
+        for line in analysis['lines']:
 
-def ui_flag_v2(mask, final_json, google_response, google_response2, gen_image, analysis, percent=1):
+            for word in line['words']:
+                word_count = word_count + 1
+        return word_count
+
+
+def ui_flag_v2(mask, final_json, gen_image, analysis, percent=0.8):
     mask = mask
     final_json = final_json
 
-    uc_obj = ui_corrections(mask, final_json, google_response, google_response2)
+    uc_obj = ui_corrections(mask, final_json)
 
     final_json = uc_obj.default_all_words_flag_to_false(final_json)
     doc_accuracy, total_words = uc_obj.document_confidence(analysis)
 
-    if percent == 1:
-        mode = "default"
-        needed_words = uc_obj.all_words(analysis)
-    else:
-        mode = None
-        needed_words = uc_obj.confidence_filter(uc_obj.google_response, percent)
+    mode = None
+    needed_words = uc_obj.confidence_filter(analysis, percent)
     upd, fj = uc_obj.flag_words_to_plot(final_json, needed_words, mode)
 
     uc_obj.render_flagged_image(fj, uc_obj.mask, gen_image)
@@ -480,6 +641,42 @@ def ui_flag_v2(mask, final_json, google_response, google_response2, gen_image, a
         img = file.read()
     gen_image = base64.encodebytes(img)
     return gen_image, doc_accuracy, total_words
+
+
+def ui_flag_v3(mask, final_json, gen_image, analysis, percent=0.8):
+    mask = mask
+    final_json = final_json
+
+    uc_obj = ui_corrections(mask, final_json)
+
+    final_json = uc_obj.default_all_words_flag_to_false(final_json)
+    doc_accuracy, total_words = uc_obj.document_confidence(analysis)
+
+    mode = None
+    needed_words = uc_obj.confidence_filter(analysis, percent)
+    upd, fj = uc_obj.flag_words_to_plot(final_json, needed_words, mode)
+
+    uc_obj.render_flagged_image(fj, uc_obj.mask, gen_image)
+    return gen_image, doc_accuracy, total_words
+
+
+def ui_flag_v4(mask, final_json, gen_image_path, analysis, language_input):
+    mask = mask
+    final_json = final_json
+    uc_obj = ui_corrections(mask, final_json)
+    #    final_json = uc_obj.default_all_words_flag_to_false(final_json)
+    total_words = uc_obj.document_fields_count(analysis)
+    #    if percent == 1:
+    #        mode = "default"
+    #        needed_words = uc_obj.all_words(analysis)
+    #    else:
+    #        mode = None
+    #        needed_words = uc_obj.confidence_filter(analysis, percent)
+    #    upd, fj = uc_obj.flag_words_to_plot(final_json, needed_words, mode)
+
+    uc_obj.render_flagged_image2(final_json, uc_obj.mask, gen_image_path, language_input)
+
+    return gen_image_path, total_words
 
 
 def check_if_centroid_inbetween_p1_p3(centroid, p1, p3):
@@ -498,10 +695,6 @@ def fetch_click_word_from_final_json(final_json, click_coordinate):
                     p1 = word['boundingBox']['p1']
                     p3 = word['boundingBox']['p3']
                     print(p1, p3)
-                    '''for val in list(m.values()):
-                        if isinstance(val, list):
-                            p1 = val[0:2]
-                            p3 = val[4:6]'''
                     if check_if_centroid_inbetween_p1_p3(click_coordinate, p1, p3):
                         return True, word['text']
     if "tables" in final_json.keys():
@@ -656,3 +849,117 @@ def dynamic_cavas_size(shape):
     dim = height_scaled, width_scaled
 
     return dim
+
+
+def custom_field(analysis, cords):  ##[p1,p3]
+
+    final_dict = {}
+    wc = []
+    for i, line in enumerate(analysis["lines"]):
+        wc.append([(word['boundingBox'], word['text']) for word in line['words']])
+
+    p1, p3 = cords
+    p2 = [p3[0], p1[1]]
+    p4 = [p1[0], p3[1]]
+    bb = [p1, p2, p3, p4]
+    tp = Polygon(bb)
+
+    final_dict['label'] = []
+    for line in wc:
+        for word in line:
+            bb = word[0]
+            centroid = Point(int((bb[0] + bb[2]) * 0.5), int((bb[1] + bb[5]) * 0.5))
+            if tp.contains(centroid):
+                if (list(set(word[1])) != ['.']) and (list(set(word[1])) != ['.', ' ']):
+                    final_dict['label'].append((word[1], word[0]))
+                else:
+                    pass
+            else:
+                pass
+
+    for label in final_dict:
+
+        words = final_dict[label]
+        label_final = []
+
+        depths = list(map(lambda x: int((x[1][1] + x[1][5]) * 0.5), words))
+        groups_formed = dict(enumerate(grouper(depths), 1))
+
+        for group in groups_formed:
+            sub_line = []
+            for word in words:
+                if int((word[1][1] + word[1][5]) * 0.5) in groups_formed[group]:
+                    sub_line.append(word[0])
+                else:
+                    pass
+            label_final.append(' '.join(sub_line))
+
+        final_dict[label] = '\n'.join(label_final)
+
+    return final_dict['label']
+
+
+# def custom_fields_adapter(p1, p3, **labels):
+#     custom_fields_new = dict()
+#     if labels:
+#         custom_fields_new[]
+
+
+def update_meta(data, metadata):  ## FOR EACH SELECTION
+
+    # data = {'label': 'default_label' , 'BoundingBox': [p1,p3] , 'Type' : 'Alpha'}
+    if 'custom_fields' not in list(metadata.keys()):
+        metadata['custom_fields'] = {}
+
+    if len(metadata['custom_fields']) == 0:
+
+        if data['label'] == 'default_label':
+            custom_field = 'label1'
+        else:
+            custom_field = data['label']
+    else:
+        if data['label'] == 'default_label':
+            default_labels = [x for x in list(metadata['custom_fields'].keys()) if 'label' in x]
+            if len(default_labels) == 0:
+                custom_field = 'label1'
+            else:
+                custom_field = 'label' + str(int(sorted(default_labels)[-1][-1]) + 1)
+        else:
+            custom_field = data['label']
+
+    metadata['custom_fields'][custom_field] = {}
+
+    for key in data:
+        if key != 'label':
+            metadata['custom_fields'][custom_field][key] = data[key]
+
+    return metadata
+
+
+def grouper(iterable):
+    prev = None
+    group = []
+    for item in iterable:
+        if not prev or item - prev <= 10:
+            group.append(item)
+        else:
+            yield group
+            group = [item]
+        prev = item
+    if group:
+        yield group
+
+
+def ui_flag_custom(mask, final_json, gen_image_path, analysis, metadata):
+    uc_obj = ui_corrections(mask, final_json)
+    final_json = uc_obj.default_all_words_flag_to_false(final_json)
+    doc_accuracy, total_words = uc_obj.document_confidence(analysis)
+
+    if 'custom_fields' in metadata.keys():
+        custom_words, fj = uc_obj.flag_words_to_plot_custom(final_json, metadata)
+
+        uc_obj.render_flagged_image(fj, uc_obj.mask, gen_image_path)
+
+    else:
+        print('No custom Field info found in metadata')
+    return gen_image_path, doc_accuracy, total_words, custom_words

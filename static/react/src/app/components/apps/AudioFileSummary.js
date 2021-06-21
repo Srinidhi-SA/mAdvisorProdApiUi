@@ -1,21 +1,14 @@
 import React from "react";
 import { connect } from "react-redux";
-import { Redirect } from "react-router";
 import store from "../../store";
-import {Button} from "react-bootstrap";
-import {} from "../../actions/appActions";
-import {C3Chart} from "../c3Chart";
-import renderHTML from 'react-render-html';
-import HeatMap from '../../helpers/heatmap';
 import {STATIC_URL} from "../../helpers/env.js"
-import {isEmpty,getUserDetailsOrRestart} from "../../helpers/helper";
+import {isEmpty} from "../../helpers/helper";
 import {getAudioFile,getListOfCards,updateAudioFileSummaryFlag} from "../../actions/appActions";
 import {Card} from "../signals/Card";
 import {Link} from "react-router-dom";
-import Breadcrumb from 'react-breadcrumb';
 
 @connect((store) => {
-	return {login_response: store.login.login_response,
+	return {
 		audioFileSummary:store.apps.audioFileSummary,
 	};
 })
@@ -60,24 +53,8 @@ export class AudioFileSummary extends React.Component {
 						<div className="side-body">
 
 						<div className="page-head">
-			              <div class="row hidden">
-			                <div class="col-md-12">
-			                  <Breadcrumb path={[
-			                    {
-			                      path: '/apps',
-			                      label: 'Apps'
-			                    }, {
-				                      path: '/apps/audio',
-				                      label: 'Audio'
-				                    },{
-			                      path: '/apps/audio/' + this.props.match.params.audioSlug,
-			                      label: audioSummary.name
-			                    }
-			                  ]}/>
-			                </div>
-			              </div>
-			              <div class="clearfix"></div>
-			            </div>
+			          <div class="clearfix"></div>
+			      </div>
 			            
 						<div className="main-content">
 						<div className="row">
@@ -91,10 +68,10 @@ export class AudioFileSummary extends React.Component {
 						<div className="btn-group btn-space">
 
 						<button type="button" className="btn btn-default" disabled="true" title="Document Mode">
-                              <i class="zmdi zmdi-hc-lg zmdi-view-web"></i>
+                              <i class="fa fa-columns"></i>
                         </button>
 						<Link className="continue btn btn-default" onClick={this.updateAudioFlag.bind(this)} to="/apps/audio">						 
-						<i class="zmdi zmdi-hc-lg zmdi-close"></i>						 
+						<i class="fa fa-times"></i>						 
 						</Link>
 						</div>
 						</div>
@@ -123,13 +100,8 @@ export class AudioFileSummary extends React.Component {
 
 		else{
 			return (
-
 					<div className="side-body">
-					<div className="page-head">
-					</div>
-					<div className="main-content">
 					<img id="loading" src={ STATIC_URL + "assets/images/Preloader_2.gif" } />
-					</div>
 					</div>
 			);
 		}

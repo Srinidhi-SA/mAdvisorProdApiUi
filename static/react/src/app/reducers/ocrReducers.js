@@ -30,6 +30,7 @@ export default function reducer(state = {
   filter_rd_status:'',
   filter_rd_confidence:'',
   filter_rd_fields:'',
+  filter_rd_template:'',
   filter_rev_accuracy:'',
   filter_rev_time:'',
   checked_list: '',
@@ -42,6 +43,7 @@ export default function reducer(state = {
   ocrUserProfileFlag : false,
   allOcrUsers : {},
   ocrReviwersList : [],
+  appsList : [],
   selectedOcrUsers : [],
   isAllCheckedFlag : false,
   editOcrUserFlag:false,
@@ -79,7 +81,7 @@ export default function reducer(state = {
   iRFlag : true,
   sRFlag : true,
   tabActive:'backlog',
-  imageTaskId: "",
+  docTaskId: [],
   projectTabLoaderFlag:false,
   dashboardMetrics: {},
   is_closed: "",
@@ -87,6 +89,22 @@ export default function reducer(state = {
   classification: "",
   ocrImgHeight: "",
   ocrImgWidth: "",
+  docTablePage: 1,
+  projectPage:1,
+  docTablePagesize:12,
+  rDocTablePagesize:12,
+  projectTablePagesize:12,
+  userTablePagesize:12,
+  reviewerTablePagesize:12,
+  userDeleteFlag: false,
+  customImgPath: "",
+  customImageName:"",
+  labelsList:[],
+  pdfSize:1,
+  pdfNumber:1,
+  pdfDoc: false,
+  pdfSlug: "",
+  hideS3Modal: false
 
 }, action) {
   switch (action.type) {
@@ -204,7 +222,10 @@ export default function reducer(state = {
         s3Loader: false,
         s3Uploaded: false,
         s3FileFetchErrorFlag : false,
-        s3FileFetchSuccessFlag : false
+        s3FileFetchSuccessFlag : false,
+        s3FileFetchErrorMsg : "",
+        s3FileUploadErrorFlag : false,
+        ocrS3BucketDetails : {}
       }
     }
     break;
@@ -235,15 +256,24 @@ export default function reducer(state = {
         ...state,
         s3Loader : false,
         s3FileUploadErrorFlag : true,
+        s3FileFetchErrorMsg : "Failed to upload files, please try again."
       }
     }
     break;
     case "SET_S3_UPLOADED": {
       return {
         ...state,
+        s3FileFetchSuccessFlag : false,
         s3Uploaded : action.flag,
         s3FileList: "",
         s3SelFileList:[]
+      }
+    }
+    break;
+    case "HIDE_S3_MODAL":{
+      return {
+        ...state,
+        hideS3Modal : action.flag
       }
     }
     break;
@@ -264,7 +294,6 @@ export default function reducer(state = {
     break;
     case "SAVE_IMAGE_DETAILS":
       {
-        let taskId = action.data.tasks === null ? "" : action.data.tasks.id;
         let close= action.data.tasks === null ? "" : action.data.tasks.is_closed;
         let templateVal = action.data.values === undefined || action.data.values === null ? "" : action.data.values;
         let classificationVal = action.data.classification === undefined || action.data.classification === null  ? "" : action.data.classification;
@@ -272,16 +301,43 @@ export default function reducer(state = {
           ...state,
           originalImgPath: action.data.imagefile ,
           ocrImgPath: action.data.generated_image,
+          customImgPath: action.data.generated_image,
           imageSlug: action.data.slug,
-          imageTaskId: taskId,
           is_closed: close,
           template: templateVal,
           classification: classificationVal,
           ocrImgHeight: action.data.height,
           ocrImgWidth: action.data.width,
+          customImageName: action.data.image_name,
+          labelsList: action.data.labels_list,
         }
       }
       break;
+      case "PDF_PAGINATION":
+        {
+        return{
+          ... state,
+          pdfSize: action.data.total_number_of_pages,
+          pdfNumber: action.data.current_page,
+          pdfDoc: true,
+        }
+        }
+      break;
+      case "SAVE_PDF_SLUG":
+        {
+          return{
+            ...state,
+            pdfSlug: action.data,
+          }
+        }
+        case "TASK_ID":
+          {
+          let taskId = action.data.task_ids === null ? [] : action.data.task_ids;
+            return{
+            ...state,
+            docTaskId: taskId,
+            }
+          }
       case "CLOSE_FLAG":
         {
           return{
@@ -305,10 +361,11 @@ export default function reducer(state = {
             originalImgPath: "" ,
             ocrImgPath: "",
             imageSlug: "",
-            imageTaskId: "",
+            docTaskId: [],
             is_closed:"",
             template: [],
             classification: "",
+            pdfDoc: false,
           }
         }
         break;
@@ -320,6 +377,14 @@ export default function reducer(state = {
           }
         }
         break;
+        case "UPDATE_CUSTOM_IMAGE":
+          {
+            return {
+              ...state,
+              customImgPath: action.data + "?" +new Date().getTime(),
+            }
+          }
+          break;
     case "OCR_FILES_SORT":
       {
         return {
@@ -333,7 +398,7 @@ export default function reducer(state = {
       {
         return {
           ...state,
-          filter_status: action.status,
+          filter_status: action.value,
         }
       }
     break;
@@ -341,7 +406,7 @@ export default function reducer(state = {
       {
         return {
           ...state,
-          filter_confidence: action.confidence,
+          filter_confidence: action.value,
         }
       }
     break;
@@ -349,7 +414,7 @@ export default function reducer(state = {
       {
         return {
           ...state,
-          filter_assignee: action.assignee
+          filter_assignee: action.value
         }
       }
     break;
@@ -358,7 +423,7 @@ export default function reducer(state = {
     {
       return {
         ...state,
-        filter_template: action.template
+        filter_template: action.value
       }
     }
   break;
@@ -366,48 +431,67 @@ export default function reducer(state = {
       {
         return {
           ...state,
-          filter_fields: action.fields
+          filter_fields: action.value
         }
       }
     break;
+    
+    case "RESET_OCR_TABLE_FILTERS":
+    {
+      return {
+        ...state,
+        filter_status:'',
+        filter_confidence: '',
+        filter_assignee:'',
+        filter_fields:'',
+        filter_template:''
+      }
+    }
+  break;
     // filter for reviewers document table
-    case "FILTER_RD_BY_STATUS":
-      {
-        return {
-          ...state,
-          filter_rd_status: action.status,
-        }
+    case "RESET_RD_FILTER_SEARCH":
+    {
+      return {
+        ...state,
+        filter_rd_status: '',
+        filter_rd_confidence:'',
+        filter_rd_fields:'',
+        filter_rd_template:'',
+        search_project_in_revtable:''
       }
-    break;
-    case "FILTER_RD_BY_CONFIDENCE":
-      {
-        return {
-          ...state,
-          filter_rd_confidence: action.confidence,
+    }
+  break;
+  case "UPDATE_FILTER_RD_DETAILS":
+   {
+        if(action.filterOn=="status"){
+          return {
+            ...state,
+            filter_rd_status: action.value,
+          }
+        }else if(action.filterOn=='confidence'){
+          return {
+            ...state,
+            filter_rd_confidence: action.value,
+          }
+        }else if(action.filterOn=='fields'){
+          return {
+            ...state,
+            filter_rd_fields: action.value
+          }
         }
-      }
-    break;
-    case "FILTER_RD_BY_FIELDS":
-      {
-        return {
-          ...state,
-          filter_rd_fields: action.fields
+        else if(action.filterOn=='template'){
+          return {
+            ...state,
+            filter_rd_template: action.value
+          }
         }
-      }//end
+    }
     break;
     case "FILTER_REV_BY_ACCURACY":
     {
       return {
         ...state,
         filter_rev_accuracy: action.accuracy,
-      }
-    }
-  break;
-  case "FILTER_REV_BY_TIME":
-    {
-      return {
-        ...state,
-        filter_rev_time: action.time,
       }
     }
   break; 
@@ -508,6 +592,12 @@ export default function reducer(state = {
         return {
           ...state,
           ocrReviwersList : action.json
+        }
+      }
+      case "SAVE_APPS_LIST":{
+        return {
+          ...state,
+          appsList : action.data
         }
       }
       case "OPEN_EDIT_USER_POPUP":{
@@ -773,38 +863,20 @@ export default function reducer(state = {
         }
       }
       break;
+
       case "CLEAR_REVIEWER_CONFIG":
       {
-        let data1 = state.configRules.iRRule
-        let irRul = {}
-        let iFlag = state.iRFlag
-        if(Object.keys(data1).length === 0){
-          irRul = {"active":"","max_docs_per_reviewer":"","selectedIRList":[],"test":""}
-        }else if(data1.auto.active === "True"){
-          irRul = {"active":"all","max_docs_per_reviewer":data1.auto.max_docs_per_reviewer,"selectedIRList":[],"test":data1.auto.remainaingDocsDistributionRule}
-        }else if(data1.custom.active === "True"){
-          irRul = {"active":"select","max_docs_per_reviewer":data1.custom.max_docs_per_reviewer,"selectedIRList":data1.custom.selected_reviewers,"test":data1.custom.remainaingDocsDistributionRule}
-        }
-        let data2 = state.configRules.sRRule
-        let srRul = {}
-        let sFlag = state.sRFlag
-        if(Object.keys(data2).length === 0){
-          srRul = {"active":"","max_docs_per_reviewer":"","selectedSRList":[],"test":""}
-        }else if(data2.auto.active === "True"){
-          srRul = {"active":"all","max_docs_per_reviewer":data2.auto.max_docs_per_reviewer,"selectedSRList":[],"test":data2.auto.remainaingDocsDistributionRule}
-        }else if(data1.custom.active === "True"){
-          srRul = {"active":"select","max_docs_per_reviewer":data2.custom.max_docs_per_reviewer,"selectedSRList":data2.custom.selected_reviewers,"test":data2.custom.remainaingDocsDistributionRule}
-        }
         return {
           ...state,
-          iRToggleFlag : iFlag,
-          iRConfigureDetails : irRul,
-          sRToggleFlag : sFlag,
-          sRConfigureDetails : srRul,
+          iRToggleFlag : state.iRFlag,
+          sRToggleFlag : state.sRFlag,
+          configRules : {},
+          iRConfigureDetails : {"active":"","max_docs_per_reviewer":"","selectedIRList":[],"test":""},
+          sRConfigureDetails : {"active":"","max_docs_per_reviewer":"","selectedSRList":[],"test":""},
           iRSearchElem : "",
           sRSearchElem : ""
         }
-      }
+      } 
       break;
       case "SAVE_RULES_FOR_CONFIGURE":
       {
@@ -825,7 +897,7 @@ export default function reducer(state = {
           srRules = {"active":"","max_docs_per_reviewer":"","selectedSRList":[],"test":""}
         }else if(data2.auto.active === "True"){
           srRules = {"active":"all","max_docs_per_reviewer":data2.auto.max_docs_per_reviewer,"selectedSRList":[],"test":data2.auto.remainaingDocsDistributionRule}
-        }else if(data1.custom.active === "True"){
+        }else if(data2.custom.active === "True"){
           srRules = {"active":"select","max_docs_per_reviewer":data2.custom.max_docs_per_reviewer,"selectedSRList":data2.custom.selected_reviewers,"test":data2.custom.remainaingDocsDistributionRule}
         }
         return {
@@ -848,6 +920,69 @@ export default function reducer(state = {
           }
         }
         break;
+      case "DOC_TABLE_PAGE" :
+        {
+          return {
+            ...state,
+            docTablePage : action.page
+          }
+        }
+        break;
+        case "DOC_TABLE_PAGESIZE" :
+          {
+            return {
+              ...state,
+              docTablePagesize : action.pagesize
+            }
+          }
+          break;
+          case "RDOC_TABLE_PAGESIZE" :
+            {
+              return {
+                ...state,
+                rDocTablePagesize : action.pagesize
+              }
+            }
+            break;
+          case "PROJECT_TABLE_PAGESIZE" :
+            {
+              return {
+                ...state,
+                projectTablePagesize : action.pagesize
+              }
+            }
+            break;
+            case "USER_TABLE_PAGESIZE" :
+              {
+                return {
+                  ...state,
+                  userTablePagesize : action.pagesize
+                }
+              }
+              break;
+              case "REVIEWER_TABLE_PAGESIZE" :
+                {
+                  return {
+                    ...state,
+                    reviewerTablePagesize : action.pagesize
+                  }
+                }
+                break;
+        case "PROJECT_PAGE" :
+          {
+            return {
+              ...state,
+              projectPage : action.page
+            }
+          }
+          break;
+          case "USER_DELETE_FLAG": {
+            return {
+              ...state,
+              userDeleteFlag : action.flag
+            }
+          }
+          break;
 }
   return state
 }

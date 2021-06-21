@@ -40,7 +40,9 @@ def xsum(numbers):
 
 import subprocess
 import re
-from api.models import Job, Dataset, Score, Insight, Trainer, StockDataset, Robo, DatasetScoreDeployment, CustomApps
+import requests
+from api.models import Job, Dataset, Score, Insight, Trainer, StockDataset, Robo, DatasetScoreDeployment, CustomApps, \
+    OutlookToken
 
 
 @task(name='hum_se_hai_zamana_sara', queue=CONFIG_FILE_NAME)
@@ -200,6 +202,15 @@ def write_into_databases(job_type, object_slug, results):
         if "error_message" in results or "model_summary" not in results:
             trainer_object.status = "FAILED"
             trainer_object.save()
+            #------------------------------------------------------------------#
+            #Sending failure mail on autoML model failure
+            if trainer_object.mode == 'autoML':
+                outlook_autoML_failure_mail(
+                    trainer_object_id=trainer_object.id,
+                    error='ML-failure',
+                    mail_id=trainer_object.email
+                )
+            #------------------------------------------------------------------#
             return results
 
         results['model_summary'] = add_slugs(results['model_summary'], object_slug=object_slug)
@@ -437,7 +448,7 @@ def save_results_to_job(slug, results):
                         model_slug=slug
                         )
 
-    if isinstance(results, str) or isinstance(results, str):
+    if isinstance(results, str):
         job.results = results
     elif isinstance(results, dict):
         results = json.dumps(results)
@@ -454,7 +465,7 @@ def save_job_messages(slug, messages):
                             model_slug=slug
                             )
 
-        if isinstance(messages, str) or isinstance(messages, str):
+        if isinstance(messages, str):
             job.messages = messages
         elif isinstance(messages, dict):
             results = json.dumps(messages)
@@ -473,7 +484,7 @@ def save_results_to_job1(slug, results):
                         model_slug=slug
                         )
 
-    if isinstance(results, str) or isinstance(results, str):
+    if isinstance(results, str):
         job.results = results
     elif isinstance(results, dict):
         results = json.dumps(results)
@@ -776,11 +787,11 @@ def trigger_outlook_periodic_job():
                         if key == 'sub_target':
                             data['sub_target'] = value
                         if key == 'target':
-                            data['target'] = value.capitalize()
+                            data['target'] = value
                         if 'train_dataset' in key:
                             input_file = value
                             data['Traindataset'] = input_file
-                            data['name'] = configkey
+                            data['name'] = input_file
                         if 'test_dataset' in key:
                             input_file = value
                             data['Testdataset'] = input_file
@@ -842,7 +853,7 @@ def trigger_metaData_autoML(data):
         train_file = open(settings.BASE_DIR + '/media/datasets/' + data['Traindataset'])
         train_f = File(train_file)
         train_dataset_config = dict()
-        train_dataset_config['name'] = data['name'] + '_Train'
+        train_dataset_config['name'] = data['name']
         train_dataset_config['input_file'] = train_f
         train_dataset_config['datasource_type'] = 'fileUpload'
         train_dataset_config['created_by'] = user_id.id
@@ -876,7 +887,7 @@ def trigger_metaData_autoML(data):
         ################################   Create config for model object that to be triggered after metadata job  ##################
         try:
             model_config = dict()
-            model_config['name'] = data['name'] + '_Trainer'
+            model_config['name'] = data['name'].split(".")[0] + '_Trainer'
             model_config['app_id'] = 2
             model_config['mode'] = "autoML"
             model_config['email'] = data['email']
@@ -1139,6 +1150,7 @@ def outlook_autoML_failure_mail(trainer_object_id=None, error=None, mail_id=None
     r = get_outlook_auth(settings.OUTLOOK_AUTH_CODE, settings.OUTLOOK_REFRESH_TOKEN,
                          settings.OUTLOOK_DETAILS)
     result = r.json()
+    print(result)
     access_token = result['access_token']
     print("got access token")
     if trainer_object_id is None:
@@ -1366,3 +1378,42 @@ def get_model_summary_pdf(app_slug, model_slug):
     save_as_pdf(driver, path, {'landscape': False})
     return path
 '''
+
+
+@periodic_task(run_every=(crontab(0, 0, day_of_month='1')), name="trigger_outlook_token", ignore_result=False,
+               queue=CONFIG_FILE_NAME)
+def trigger_outlook_token():
+
+    outlook_data = settings.OUTLOOK_DETAILS
+    token = OutlookToken.objects.first()
+
+    post_data_auth_code = {
+        'grant_type': 'authorization_code',
+        'code': token.access_token,
+        'redirect_uri': outlook_data['redirect_uri'],
+        'scope': settings.OUTLOOK_SCOPES,
+        'client_id': outlook_data['client_id'],
+        'client_secret': outlook_data['client_secret']
+    }
+    post_data_refresh_token = {'grant_type': 'refresh_token',
+                               'redirect_uri': outlook_data['redirect_uri'],
+                               'scope': 'https://graph.microsoft.com/.default',
+                               'refresh_token': token.refresh_token,
+                               'client_id': outlook_data['client_id'],
+                               'client_secret': outlook_data['client_secret']
+                               }
+
+    if token.refresh_token is not None:
+        r = requests.post(settings.OUTLOOK_TOKEN_URL, data=post_data_refresh_token)
+        result = r.json()
+        outlook_token = OutlookToken(refresh_token=result['refresh_token'], access_token=result['access_token'])
+        outlook_token.save()
+    else:
+        r = requests.post(settings.OUTLOOK_TOKEN_URL, data=post_data_auth_code)
+        result = r.json()
+        outlook_token = OutlookToken(refresh_token=result['refresh_token'], access_token=result['access_token'])
+        outlook_token.save()
+    return result
+
+
+

@@ -86,7 +86,7 @@ export class OcrInitialReview extends React.Component {
             this.saveIRConfig.bind(this)
         }
         iReviewerTable = 
-        <Scrollbars style={{height:250}} >
+        <Scrollbars autoHeight autoHeightMin={100} autoHeightMax={300}>
             <table className = "table table-bordered table-hover" id="iRtable" style={{background:"#FFF"}}>
                 <thead><tr id="iRtHead">
                     <th className="text-center xs-pr-5" style={{width:"80px"}}>
@@ -98,9 +98,9 @@ export class OcrInitialReview extends React.Component {
                 <tbody>
                         { 
                         listForIRTable.length != 0?
-                            listForIRTable.map((item) => {
+                            listForIRTable.map((item,index) => {
                                 return (
-                                    <tr>
+                                    <tr key={index}>
                                         <td className="text-center">
                                             <Checkbox name="selectedIR" id={item.name} value={item.name} onChange={this.saveIRConfig.bind(this)} checked={ (this.props.activeiR==="all")?true:(this.props.selectedIRList !=undefined && this.props.selectedIRList.includes(item.name))} disabled={getDisabledVal}/>
                                         </td>
@@ -125,7 +125,7 @@ export class OcrInitialReview extends React.Component {
                     <div className="form-group">
                         <div className="checkbox checbox-switch switch-success">
                             <label>
-                                <input type="checkbox" name="iRToggleFlag" checked={this.props.iRToggleFlag} onChange={this.saveInitialReviwerToggleVal.bind(this)}/>
+                                <input type="checkbox" name="iRToggleFlag" defaultChecked={this.props.iRToggleFlag} onChange={this.saveInitialReviwerToggleVal.bind(this)}/>
                                 <span></span>
                                 Enable automatic reviewer assignment<br/>
                                 <small>when enabled, documents that enter workflow will be assigned to reviewers according to your choices below</small>
@@ -151,7 +151,7 @@ export class OcrInitialReview extends React.Component {
                             </div>
                         }
                         <div className="ma-radio">
-                            <input type="radio" name="activeiR" value="select" id="assigniRDocsToSelect" onClick={this.saveIRConfig.bind(this)} checked={!(this.props.activeiR === "all")}/>
+                            <input type="radio" name="activeiR" value="select" id="assigniRDocsToSelect" onClick={this.saveIRConfig.bind(this)} defaultChecked={!(this.props.activeiR === "all")}/>
                             <label for="assigniRDocsToSelect">Distribute documents randomnly and evenly over selected reviewers</label>
                         </div>
                         {this.props.activeiR === "select" &&

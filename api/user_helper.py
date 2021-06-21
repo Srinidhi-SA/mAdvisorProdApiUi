@@ -183,8 +183,8 @@ def create_profile(sender, **kwargs):
         ocr_user_profile.save()
         #Loading all customapps for the user
         ########################################
-        from api.views import all_apps_for_users
-        all_apps_for_users(user)
+        # from api.views import all_apps_for_users
+        # all_apps_for_users(user)
         ########################################
         user_profile.save()
 
@@ -242,8 +242,7 @@ def upload_photo(request):
 
 @csrf_exempt
 def get_profile_image(request, slug=None):
-
-    profile = Profile.objects.filter(slug=slug).first()
+    profile = Profile.objects.get(slug=slug)
     if profile is None:
         return Response({'message': 'No Image. Upload an image.'})
     import magic
@@ -253,7 +252,7 @@ def get_profile_image(request, slug=None):
     try:
         image = profile.photo
         image_buffer = open(
-            name=image.path,
+            file=image.path,
             mode="rb"
         ).read()
         content_type = magic.from_buffer(image_buffer, mime=True)

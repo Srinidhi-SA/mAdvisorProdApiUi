@@ -1,15 +1,10 @@
 import React from "react";
 import {connect} from "react-redux";
-import {Redirect} from "react-router";
 import store from "../../store";
-import {statusMessages} from  "../../helpers/helper"
-import {Button} from "react-bootstrap";
 import { setPyTorchLayer, updateAlgorithmData, pytorchValidateFlag, deletePyTorchLayer } from "../../actions/appActions";
 
 @connect((store)=>{
     return{
-        algorithmData:store.apps.regression_algorithm_data,
-        manualAlgorithmData:store.apps.regression_algorithm_data_manual,
         pyTorchLayer:store.apps.pyTorchLayer,
         idLayer:store.apps.idLayer,
     }
@@ -28,6 +23,7 @@ export class PyLayer extends React.Component {
     }
 
     selectHandleChange(parameterData,e){
+        e.target.classList.remove("regParamFocus")
         if(parameterData.name === "activation" && (e.target.value === "ReLU" || e.target.value === "LeakyReLU") ){
             $("#suggest_pt")[0].innerHTML = "Select Kaiming Normal or Kaiming Unifrom from  weight_init for best results";
         }
@@ -39,9 +35,11 @@ export class PyLayer extends React.Component {
         if(this.props.idNum === 1 && parameterData.name === "activation" && e.target.value != "Sigmoid" && ($(".loss_pt")[0].value === "NLLLoss" || $(".loss_pt")[0].value === "BCELoss") ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Please select Sigmoid as Loss is "+ $(".loss_pt")[0].value
+            e.target.classList.add('regParamFocus')        
         }else if(parameterData.name === "weight_init" && e.target.value === "Dirac"){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Used only for Image Data"
+            e.target.classList.add('regParamFocus')
         }else{
             e.target.parentElement.lastElementChild.innerText = ""
             this.props.dispatch(pytorchValidateFlag(true));
@@ -103,22 +101,25 @@ export class PyLayer extends React.Component {
     }
 
     changeTextBoxValue(parameterData,e){
-        let name = parameterData.name;
         let val = e.target.value;
         if(!Number.isInteger(parseFloat(val)) ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Enter a positive integer"
+            e.target.classList.add('regParamFocus')        
         }
         else if(val === ""){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Enter value"
+            e.target.classList.add('regParamFocus')        
         }
         else if(val<=0){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Enter value greater than 0"
+            e.target.classList.add('regParamFocus')        
         }else{
             this.props.dispatch(pytorchValidateFlag(true));
             e.target.parentElement.lastElementChild.innerText = ""
+            e.target.classList.remove('regParamFocus')        
             let layerArry = this.props.idNum
             let newLyrVal = this.props.pyTorchLayer[layerArry];
             newLyrVal[parameterData.name] = parseInt(val);
@@ -134,11 +135,12 @@ export class PyLayer extends React.Component {
     }
     setChangeLayerSubParams(subparameterData,defaultParamName,e){
         this.props.dispatch(pytorchValidateFlag(true));
-            e.target.parentElement.lastElementChild.innerText = ""
-            let layerArry = this.props.idNum
-            let newsubLyrVal = this.props.pyTorchLayer[layerArry];
-            newsubLyrVal[defaultParamName][subparameterData.name] = e.target.value;
-            this.props.dispatch(setPyTorchLayer(parseInt(layerArry),newsubLyrVal));
+        e.target.parentElement.lastElementChild.innerText = ""
+        e.target.classList.remove('regParamFocus')   
+        let layerArry = this.props.idNum
+        let newsubLyrVal = this.props.pyTorchLayer[layerArry];
+        newsubLyrVal[defaultParamName][subparameterData.name] = e.target.value;
+        this.props.dispatch(setPyTorchLayer(parseInt(layerArry),newsubLyrVal));
     }
     setLayerSubParams(subparameterData,defaultParamName,e){
         let name = subparameterData.name;
@@ -146,74 +148,92 @@ export class PyLayer extends React.Component {
         if( (name === "alpha" || name === "lambd" || name === "max_val" || name === "negative_slope" || name === "init" || name === "num_parameters" || name === "lower" || name === "upper" || name === "momentum" || name === "eps" || name === "p") && (val>1 || val<0 || val === "")){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "value range is 0 to 1"
+            e.target.classList.add('regParamFocus')        
         }
         else if(name === "min_val" && (val>1 || val<-1 || val === "")){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "value range is -1 to 1"
+            e.target.classList.add('regParamFocus')        
         }
         else if( name === "min_val" && ($(".min_val_pt")[this.props.idNum-1].value > $(".max_val_pt")[this.props.idNum-1].value)){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "min_val should be less than max_val"
+            e.target.classList.add('regParamFocus')        
         }
         else if(name === "max_val" && ($(".min_val_pt")[this.props.idNum-1].value > $(".max_val_pt")[this.props.idNum-1].value)){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "max_val should be greater than min_val"
+            e.target.classList.add('regParamFocus')        
         }
         else if( (name === "embed_dim" || name === "num_heads" || name === "kdim" || name === "vdim" || name === "beta" || name === "threshold" || name === "div_value") && (val<0 || val === "")){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Enter a positive integer"
+            e.target.classList.add('regParamFocus')        
         }
         else if( (name === "n_classes" || name === "dim") && val<0){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Enter a positive integer"
+            e.target.classList.add('regParamFocus')        
         }
         else if( (name === "embed_dim" || name === "num_heads" || name === "dim" || name === "n_classes" || name === "kdim" || name === "vdim") && !Number.isInteger(parseFloat(val)) ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Decimals not allowed"
+            e.target.classList.add('regParamFocus')        
         }
         else if( (name === "lower_bound" || name === "upper_bound") && $(".input_unit_pt")[0].value === ""){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Please enter Input units"
+            e.target.classList.add('regParamFocus')        
         }
         else if( name === "lower_bound" && (val< (-1/Math.sqrt($(".input_unit_pt")[0].value)) || val==="") ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Value should be greater than "+ (-1/Math.sqrt($(".input_unit_pt")[0].value))
+            e.target.classList.add('regParamFocus')        
         }
         else if( name === "upper_bound" && (val> (1/Math.sqrt($(".input_unit_pt")[0].value)) || val === "") ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Value should be greater than "+ 1/Math.sqrt($(".input_unit_pt")[0].value)
+            e.target.classList.add('regParamFocus')        
         }
         else if( (name === "lower_bound" || name === "upper_bound")&& ( $(".lower_bound_pt")[0].value>$(".upper_bound_pt")[0].value )){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "Lower bound must be less than Upper bound"
+            e.target.classList.add('regParamFocus')        
         }
         else if(defaultParamName === "weight_init" && name === "std" && (val<=0 || val>5)){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "value range is 1 to 5"
+            e.target.classList.add('regParamFocus')        
         }
         else if( ( name === "std" || name === "a" || name === "sparsity") && ( val<-1 || val>1 || val==="" ) ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "value range is -1 to 1"
+            e.target.classList.add('regParamFocus')        
         }
         else if( (name === "mean" || name === "min" || name === "max")  && ( val<0 || val>1 || val==="" ) ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "value range is 0 to 1"
+            e.target.classList.add('regParamFocus')        
         }
         else if( name === "gain"  && ( val<0 || val>2 || val==="" ) ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "value range is 0 to 2"
+            e.target.classList.add('regParamFocus')        
         }
         else if( (name === "val" || name === "sparsity")  && ( val<-2 || val>2 || val==="" ) ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "value range is -2 to 2"
+            e.target.classList.add('regParamFocus')        
         }
         else if( ($("#min_pt")[0]!=undefined && $("#max_pt")[0]!=undefined) && ($("#min_pt")[0].value > $("#max_pt")[0].value) ){
             this.props.dispatch(pytorchValidateFlag(false));
             e.target.parentElement.lastElementChild.innerText = "min should be less than max"
+            e.target.classList.add('regParamFocus')        
         }
         else{
             this.props.dispatch(pytorchValidateFlag(true));
             e.target.parentElement.lastElementChild.innerText = ""
+            e.target.classList.remove('regParamFocus')        
             let layerArry = this.props.idNum
             let newsubLyrVal = this.props.pyTorchLayer[layerArry];
             newsubLyrVal[defaultParamName][subparameterData.name] = parseFloat(e.target.value);
@@ -242,7 +262,7 @@ export class PyLayer extends React.Component {
                         var disableField = false;
                     }
                     arr1.push(
-                        <div class="row mb-20">
+                        <div key={item[i].name} class="row mb-20">
                             <label className={mandateField.includes(item[i].displayName)? "col-md-2 mandate" : "col-md-2"}>{item[i].displayName}</label>
                             <label className ="col-md-4">{item[i].description}</label>
                             <div className="col-md-1">
@@ -259,19 +279,19 @@ export class PyLayer extends React.Component {
                         var sel = ""
                         sel = this.props.pyTorchLayer[this.props.idNum][defaultParamName][item[i].name];
                         var optionsTemp = []
-                        optionsTemp.push(<option value="None">--select--</option>)
-                        options.map(k => {
+                        optionsTemp.push(<option key={'None'} value="None">--select--</option>)
+                        options.map((k,index) => {
                             if(k.name === sel)
                                 selectedValue = true;
                             else selectedValue = false;
-                            optionsTemp.push(<option value={k.name} selected={selectedValue}> {k.name}</option>)
+                            optionsTemp.push(<option key={k.name}value={k.name}> {k.name}</option>)
                         })
                         arr1.push(
-                            <div class="row mb-20">
+                            <div key={item[i].name} class="row mb-20">
                                 <label className={mandateField.includes(item[i].displayName)? "col-md-2 mandate" : "col-md-2"}>{item[i].displayName}</label>
                                 <label className="col-md-4">{item[i].description}</label>
                                 <div className = "col-md-3">
-                                    <select key={`form-control ${item[i].name}_pt`} className={`form-control ${item[i].name}_pt`} ref={(el) => { this.eleSel = el }} onChange={this.setChangeLayerSubParams.bind(this,item[i],defaultParamName)}>
+                                    <select key={`form-control ${item[i].name}_pt`} defaultValue={sel} className={`form-control ${item[i].name}_pt`} ref={(el) => { this.eleSel = el }} onChange={this.setChangeLayerSubParams.bind(this,item[i],defaultParamName)}>
                                         {optionsTemp}
                                     </select>
                                     <div key={`${item[i].name}_pt`} className="error_pt"></div>
@@ -282,7 +302,7 @@ export class PyLayer extends React.Component {
                 case "slider":
                     var mandateField =["p"]
                     arr1.push(
-                        <div class="row mb-20">
+                        <div key={item[i].name}  class="row mb-20">
                             <label className={mandateField.includes(item[i].displayName)? "col-md-2 mandate" : "col-md-2"}>{item[i].displayName}</label>
                             <label className="col-md-4">{item[i].description}</label>
                                 <div className="col-md-1">
@@ -294,7 +314,7 @@ export class PyLayer extends React.Component {
                     break;
                 default:
                     arr1.push(
-                        <div className="row mb-20">
+                        <div key={item[i].displayName} className="row mb-20">
                             <label className="col-md-2">{item[i].displayName}</label>
                             <label className="col-md-4">{item[i].description}</label>
                         </div>
@@ -315,7 +335,7 @@ export class PyLayer extends React.Component {
                 var selectedValue = ""
                 var optionsTemp =[];
                 var sel = ";"
-                optionsTemp.push(<option value="None">--Select--</option>)
+                optionsTemp.push(<option key={'None'} value="None">--Select--</option>)
                 for (var prop in options) {
                     if(parameterData.name === "activation"){
                         selectedValue = this.props.pyTorchLayer[lyr].activation.name
@@ -338,16 +358,16 @@ export class PyLayer extends React.Component {
                     }else if(options[prop].selected){
                         selectedValue = options[prop].name;
                     }
-                    optionsTemp.push(<option key={prop} className={prop} value={options[prop].name} selected={sel}>{options[prop].displayName}</option>);
+                    optionsTemp.push(<option key={prop} className={prop} value={options[prop].name} >{options[prop].displayName}</option>);
                 }
                 
                 return(
-                    <div>
+                    <div key={parameterData.name}>
                         <div className = "row mb-20">
                             <label className = {mandateField.includes(parameterData.displayName)? "col-md-2 mandate" : "col-md-2"}>{parameterData.displayName}</label>
                             <label className = "col-md-4">{parameterData.description}</label>
                             <div className = "col-md-3">
-                                <select ref={(el) => { this.eleSel = el }} key={`form-control ${parameterData.name}_pt`} className={`form-control ${parameterData.name}_pt`} onChange={this.selectHandleChange.bind(this,parameterData)} >
+                                <select ref={(el) => { this.eleSel = el }} defaultValue={selectedValue} key={`form-control ${parameterData.name}_pt`} className={`form-control ${parameterData.name}_pt`} onChange={this.selectHandleChange.bind(this,parameterData)} >
                                     {optionsTemp}
                                 </select>
                                 <div key={`${parameterData.name}_pt`} className = "error_pt"></div>
@@ -390,7 +410,7 @@ export class PyLayer extends React.Component {
                             break;
                     }
                     return (
-                        <div className="row mb-20">
+                        <div  key={parameterData.name} className="row mb-20">
                             <label className = {mandateField.includes(parameterData.displayName)? "col-md-2 mandate" : "col-md-2"}>{parameterData.displayName}</label>
                             <label className = "col-md-4">{parameterData.description}</label>
                             <div className = "col-md-1">
@@ -404,7 +424,7 @@ export class PyLayer extends React.Component {
                 break;
             default:
                 return (
-                    <div className = "row mb-20">
+                    <div key={parameterData.name} className = "row mb-20">
                         <label className="col-md-4">{parameterData.displayName}</label>
                         <label className="col-md-4">{parameterData.description}</label>
                         <div className="error_pt"></div>
@@ -416,24 +436,24 @@ export class PyLayer extends React.Component {
         var cls =`layerPanel ${this.props.idNum}`
         var clsId = `layer${this.props.idNum}`
         let renderPyTorchLayer = this.props.parameterData.parameters.filter(i=>i.displayName === "Layer")[0].defaultValue[0].parameters.map((layerData,index)=>{
-                if(layerData.display){
-                    const lyr = this.renderPyTorchData(layerData);
-                    return lyr;
-                }
-            });
+            if(layerData.display){
+                const lyr = this.renderPyTorchData(layerData);
+                return lyr;
+            }
+        });
         return (
             <div class={cls} id={clsId}>
                 <div class="layerHeader" id={this.props.idNum}>
                     Linear Layer {this.props.idNum}
-                    <i className="fa fa-chevron-up" type="button" data-toggle="collapse" data-target={`#collapseExample${this.props.idNum}`} aria-expanded="true" aria-controls={`collapseExample${this.props.idNum}`} />
+                    <i className="fa fa-chevron-up" type="button" data-toggle="collapse" data-target={`#collpseExample${this.props.idNum}`} aria-expanded="true" aria-controls={`collpseExample${this.props.idNum}`} />
                     {(this.props.idLayer.length === this.props.idNum)?
                         <i className="fa fa-trash-o" type="button" onClick={this.deleteLayer.bind(this,this.props.idNum)}/>
                         :""
                     }
                 </div>
-                <div className="collapse in" id={`collapseExample${this.props.idNum}`}>
+                <div className="collapse in" id={`collpseExample${this.props.idNum}`}>
                     <div className="card card-body">
-                        <div class="layerBody" style={{'paddingLeft':'15px'}}>
+                        <div class="layerBody xs-pl-15">
                             {renderPyTorchLayer}
                         </div>
                         <div id="suggest_pt" className="mb-20 error_pt"></div>
