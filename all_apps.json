@@ -313,7 +313,14 @@
       "app_type": "OCR",
       "rank": 3
     }
-  } 
-
+  },
+  {
+    "model": "ocr.template",
+    "pk": 1,
+    "fields": {
+      "template_classification": "{}",
+      "modified_at": "2018-09-17 13:30:24"
+    }
+  }
 ]
 
