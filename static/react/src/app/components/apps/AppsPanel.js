@@ -21,7 +21,7 @@ import {
 } from "../../actions/appActions";
 import {STATIC_URL,APPS_ALLOWED} from "../../helpers/env.js"
 import { API } from "../../helpers/env";;
-import { SEARCHCHARLIMIT,getUserDetailsOrRestart} from "../../helpers/helper.js"
+import { SEARCHCHARLIMIT,getUserDetailsOrRestart, statusMessages} from "../../helpers/helper.js"
 import {cookieObj} from '../../helpers/cookiesHandler';
 import { dashboardMetrics,selectedProjectDetails,saveDocumentPageFlag } from '../../actions/ocrActions';
 
@@ -117,18 +117,23 @@ export class AppsPanel extends React.Component {
         document.getElementById('search_apps').value = "";
     }
   }
-  gotoAppsList(appId, appName,appDetails) {
-    this.props.dispatch(updateSelectedApp(appId, appName,appDetails));
-    this.props.dispatch(updateModelSummaryFlag(false));
-    this.props.dispatch(updateScoreSummaryFlag(false));
-    this.props.dispatch(showRoboDataUploadPreview(false));
-    this.props.dispatch(updateAudioFileSummaryFlag(false));
-    this.props.dispatch(closeAppsLoaderValue());
-    this.props.dispatch(uploadStockAnalysisFlag(false));
-    this.props.dispatch(clearModelSummary());
-    this.props.dispatch(clearDataPreview());
-    if(appDetails.displayName === "ITE"){
-     this.getITEDashboardMetrics();
+  gotoAppsList(appId, appName,appDetails,appPermit) {
+    if(appPermit){
+      this.props.dispatch(updateSelectedApp(appId, appName,appDetails));
+      this.props.dispatch(updateModelSummaryFlag(false));
+      this.props.dispatch(updateScoreSummaryFlag(false));
+      this.props.dispatch(showRoboDataUploadPreview(false));
+      this.props.dispatch(updateAudioFileSummaryFlag(false));
+      this.props.dispatch(closeAppsLoaderValue());
+      this.props.dispatch(uploadStockAnalysisFlag(false));
+      this.props.dispatch(clearModelSummary());
+      this.props.dispatch(clearDataPreview());
+      appDetails.displayName === "ITE"?this.getITEDashboardMetrics():"";
+    }else if(appDetails.displayName === "ITE" && !appPermit){
+      bootbox.alert(statusMessages("error","You don't have permission to view ITE app","small_mascot"))
+    }
+    else{
+      bootbox.alert(statusMessages("error","This app is under construction. We're working on it!","small_mascot"))
     }
   }
 
@@ -224,19 +229,34 @@ export class AppsPanel extends React.Component {
           </li>
         )
       });
+      let userRole = getUserDetailsOrRestart.get().userRole
+      let toApp = "";
+      let appPermit = true;
+      if(data.app_id == 2 || data.app_id == 13){
+        toApp = data.app_url.replace("/models","") +"/modeSelection";
+        appPermit = true
+      }else if(data.app_id === 5){
+        toApp = data.app_url.replace("/models","") + "/";
+        appPermit = true;
+      }else if(data.displayName === "ITE"){
+        if(userRole === "Admin" || userRole ===  "Superuser"){
+          toApp = data.app_url.concat("project");
+          appPermit = true;
+        }else if(userRole === "ReviewerL1" || userRole ===  "ReviewerL2"){
+          toApp = data.app_url.concat("reviewer");
+          appPermit = true;
+        }else{
+          toApp = "#"
+          appPermit = false;
+        }
+      }else{
+        toApp = "#"
+        appPermit = false;
+      }
       return (
         <div key={index} class="col-md-4 xs-mb-20">
           <div className="app-block">
-            <Link className="app-link" id={data.name} onClick={this.gotoAppsList.bind(this, data.app_id, data.name,data)} to= 
-              {(data.app_id == 2 || data.app_id == 13) ? 
-                data.app_url.replace("/models","") +"/modeSelection": 
-                (data.displayName== "ITE" && (getUserDetailsOrRestart.get().userRole == "Admin" || getUserDetailsOrRestart.get().userRole ==  "Superuser"))?
-                data.app_url.concat("project"):
-                ((data.displayName== "ITE" && (getUserDetailsOrRestart.get().userRole == "ReviewerL1" || getUserDetailsOrRestart.get().userRole ==  "ReviewerL2"))?         
-                data.app_url.concat("reviewer"):
-                data.app_url.replace("/models","") + "/" 
-                )
-                }>
+            <Link className="app-link" id={data.name} onClick={this.gotoAppsList.bind(this, data.app_id, data.name,data,appPermit)} to={toApp}>
                 <div className="col-md-4 col-sm-3 col-xs-5 xs-p-20">
                   <img src={STATIC_URL + "assets/images/" + data.iconName} className="img-responsive"/>
                 </div>

@@ -18,6 +18,7 @@ export class AppsCreateStockAnalysis extends React.Component {
 		this.state={ 
 			domain:[],
 			company:[],
+			isMaxError:false,
 		}
 	}
 	componentWillMount() {
@@ -55,6 +56,10 @@ export class AppsCreateStockAnalysis extends React.Component {
 			document.getElementById("resetMsg").innerText="Please select all mandatory fields."
 			return false;
 		}
+		if(this.state.isMaxError)   {
+			document.getElementById("resetMsg").innerText="Select maximum 5 companies"
+      return false
+		}
 		if (analysisName == ""||(analysisName != "" && analysisName.trim() == "")) {
 			document.getElementById("resetMsg").innerText="Please enter stock analysis name."
 			return false;
@@ -62,13 +67,26 @@ export class AppsCreateStockAnalysis extends React.Component {
 		if (letters.test(analysisName) == false){
 			document.getElementById("resetMsg").innerText = "Please enter analysis name in a correct format. It should not contain special characters .,@,#,$,%,!,&.";
       return false
-    }     
+    }  
 		for(var i=0;i<companies.length;i++){
 			window['value'+i] = new this.companyDetails(companyList.filter(j=>j.value==companies[i])[0].label, companies[i]);
 			list.push((window['value'+i]))
 		}
     $('#extractData').prop('disabled', true);
 		this.props.dispatch(crawlDataForAnalysis(domains, companies,analysisName,list));
+	}
+
+	checkCountandUpdate(e){
+		this.setState({ company: e.value}, function() {
+			if(this.state.company.length>5){
+				document.getElementById("resetMsg").innerText="Select maximum 5 companies"
+				this.setState({ isMaxError:true})
+			}
+			else{
+				document.getElementById("resetMsg").innerText=""
+				this.setState({ isMaxError:false})
+			}
+		})
 	}
 	render() {
 		let domainList=[
@@ -169,7 +187,7 @@ export class AppsCreateStockAnalysis extends React.Component {
 								<div className="form-group">
 									<label className=" control-label col-md-4 mandate">Select Company </label>
 									<div class="col-md-8">
-										<MultiSelect className="comapanyMultiselect" value={this.state.company} options={companyList.sort((a, b) => (a.label > b.label) ? 1 : -1)} onChange={e => this.setState({ company: e.value })}
+										<MultiSelect className="comapanyMultiselect" value={this.state.company} options={companyList.sort((a, b) => (a.label > b.label) ? 1 : -1)} onChange={this.checkCountandUpdate.bind(this)}
                      style={{"width": "100%"}}  filter={true} placeholder="Choose Company" />
                   </div>
 								</div>

@@ -70,7 +70,7 @@ export class OcrUpload extends React.Component {
     })
 
     if (formatErr.includes(false)) {
-      document.getElementById("resetMsg").innerText = "Only image files are accepted. Please try again.";
+      document.getElementById("resetMsg").innerText = "Only image or pdf files are accepted. Please try again.";
       return false
     }
     this.setState({ selectedFiles: Object.values(event.target.files), })

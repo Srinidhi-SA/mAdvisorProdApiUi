@@ -1484,6 +1484,9 @@ class OCRImageView(viewsets.ModelViewSet, viewsets.GenericViewSet):
         try:
             image_queryset = OCRImage.objects.get(slug=slug)
             image_queryset.classification = template
+            result_classification = json.loads(image_queryset.final_result)
+            result_classification['temp_number'][0] = template
+            image_queryset.final_result = json.dumps(result_classification)
             image_queryset.save()
             pdf_queryset = OCRImage.objects.get(doctype='pdf', identifier=image_queryset.identifier)
             pdf_queryset.classification = template
@@ -1782,8 +1785,22 @@ class ProjectView(viewsets.ModelViewSet, viewsets.GenericViewSet):
                     return creation_failed_exception("Name is very large.")
                 if should_proceed == -3:
                     return creation_failed_exception("Name have special_characters.")
-
-            return JsonResponse({'message': 'Deleted'})
+            try:
+                instance = self.get_object_from_all()
+                # if 'deleted' in data:
+                #     if data['deleted']:
+                #         print('let us deleted')
+                #         instance.delete()
+                #         # clean_up_on_delete.delay(instance.slug, OCRImage.__name__)
+                #         return JsonResponse({'message': 'Deleted'})
+            except FileNotFoundError:
+                return creation_failed_exception("File Doesn't exist.")
+            serializer = self.get_serializer(instance=instance, data=data, partial=True,
+                                             context={"request": self.request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors)
 
         try:
             if 'deleted' in data:

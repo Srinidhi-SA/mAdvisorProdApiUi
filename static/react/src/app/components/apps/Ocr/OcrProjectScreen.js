@@ -80,15 +80,15 @@ export class OcrProjectScreen extends React.Component {
          body: JSON.stringify({ name: this.state.editProjectName })
       }).then(response => response.json())
          .then(data => {
-            if (data.edited === true) {
-               this.closePopup(),
-                  bootbox.alert(statusMessages("success", "Project name changed.", "small_mascot"))
+            if(!data.status && data.status!=undefined) {
+               document.getElementById("resetMsg").innerText = data.exception;
+            }
+            else {
+               this.closePopup();
+               bootbox.alert(statusMessages("success", "Project name changed.", "small_mascot"))
                setTimeout(() => {
                   this.props.dispatch(getOcrProjectsList())
                }, 1000)
-            }
-            else {
-               document.getElementById("resetMsg").innerText = data.exception;
             }
          })
    }

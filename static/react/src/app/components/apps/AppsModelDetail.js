@@ -22,7 +22,6 @@ import {AppsModelHyperDetail} from "./AppsModelHyperDetail"
 	};
 })
 
-
 export class AppsModelDetail extends React.Component {
   constructor(props) {
     super(props);
@@ -46,13 +45,6 @@ export class AppsModelDetail extends React.Component {
 	}
 
 	componentDidMount() {
-		if(document.querySelector(".sm-pb-10")!= null ){
-			let FE = document.querySelector(".sm-pb-10")
-			if(FE.innerText==="Feature Importance") {
-				FE.style.display = "none";
-				document.querySelector(".chart-area").style.display = "none";
-			}
-		}
 		if(document.getElementsByClassName("noTable")[0] !=undefined){
 			document.getElementsByClassName("noTable")[0].parentElement.parentElement.nextElementSibling.className = "col-md-8 col-md-offset-2"
 			let element = document.getElementsByClassName("noTable")[0].parentElement.parentElement.nextElementSibling.children[0].firstElementChild;
@@ -67,64 +59,6 @@ export class AppsModelDetail extends React.Component {
 			this.props.dispatch(getAppsModelSummary(store.getState().apps.modelSlug));
 		}
 		this.props.dispatch(getAppsAlgoList(1));
-		this.addModelManagementLinks();	
-	}
-
-	addModelManagementLinks(){
-		let selAlgoList = Object.values(this.props.modelSummary.TrainAlgorithmMapping)
-		let noOfHeads = $(".sm-mb-20").length;
-			for(var i=0;i<noOfHeads;i++){
-				let algoNam = $(".sm-mb-20")[i].innerText.replace(/ /g,'').toLocaleUpperCase();
-				let regAlgoName=$(".sm-mb-20")[i].textContent
-				let algorithmName = ""
-				if(algoNam === "LOGISTICREGRESSION")
-					algorithmName = "LG"
-				else if(algoNam === "XGBOOST")
-					algorithmName = "XG"
-				else if(algoNam === "RANDOMFOREST")
-					algorithmName = "RF"
-				else if(algoNam === "NAIVEBAYES")
-					algorithmName = "NB"
-				else if(algoNam === "NEURALNETWORK(PYTORCH)")
-					algorithmName = "PT"
-				else if(algoNam === "NEURALNETWORK(TENSORFLOW)")
-				  algorithmName = "TF"
-				else if(algoNam === "NEURALNETWORK(SKLEARN)")
-				  algorithmName = "NN"
-				else if(algoNam === "ENSEMBLE")
-				  algorithmName = "EN"
-				else if(algoNam === "ADABOOST")
-					algorithmName = "ADAB"
-				else if(algoNam === "LIGHTGBM")
-					algorithmName = "LGBM"
-				else if(regAlgoName ==="Gradient Boosted Tree RegressionSummary")
-		      algorithmName = "GB"
-				else if(regAlgoName==="Random Forest RegressionSummary")
-			   	algorithmName = "RFR"
-				else if(regAlgoName==="Decision Tree RegressionSummary")
-			  	algorithmName = "DT"
-				else if(regAlgoName==="Linear RegressionSummary")
-				  algorithmName = "LR"
-				else if(regAlgoName==="Neural Network (TensorFlow)Summary")
-				  algorithmName = "TF"
-				else 
-					algorithmName = ""
-				
-				if(algorithmName != ""){
-					let info = document.createElement('a');
-					var att = document.createAttribute("class");
-					att.value = this.props.currentAppId==13?"summaryLinkReg":"summaryLink";
-					info.setAttributeNode(att);
-					var modelName= store.getState().apps.modelSummary.name;
-					let sel = selAlgoList.filter(i => (i.model_id).includes(algorithmName+"_"))
-					this.props.currentAppId==13? document.getElementsByTagName('small')[i].hidden=true:"";
-					if( (sel.length!=0) && (!modelName.includes("shared")) ){
-						info.innerText = "(For More Info Click Here)";
-						info.href = this.props.match.url.replace("models/"+this.props.modelSlug,"modelManagement/"+sel[0].slug);
-						this.props.currentAppId==13?$(".sm-mb-20")[i].parentNode.appendChild(info):$(".sm-mb-20")[i].parentNode.parentNode.appendChild(info);
-					}
-				}
-			}
 	}
 
   componentDidUpdate(){
@@ -155,11 +89,78 @@ export class AppsModelDetail extends React.Component {
 			var listOfCardList = modelSummary.data.model_summary.listOfCards;	
 			var componentsWidth = 0;
 			var cardDataList = "";
+			let that = this;
 			if(!$.isEmptyObject(listOfCardList)){
 				cardDataList = listOfCardList.map((data, i) => {
+					let selAlgoList = Object.values(that.props.modelSummary.TrainAlgorithmMapping)
+					var cardDataArray = data.cardData;
+					if(that.props.currentAppDetails.app_id === 2){
+						if(data.cardData.filter(i=>i.dataType==="c3Chart").length>0){
+							cardDataArray = []
+						}
+						else if(cardDataArray.filter(i=>i.dataType==="html").length>0 && !that.props.modelSlug.includes("_shared")){
+							let headCard = cardDataArray.filter(i=>i.dataType==="html");
+							if(headCard[0].data.includes("'sm-mb-20'")){
+								let algoNam= headCard[0].data.replace(/<[^>]+>/g, '').replace(/ /g,'').toLocaleUpperCase();
+								let algorithmName = ""
+								switch(algoNam){
+									case "LOGISTICREGRESSION": algorithmName = "LG";
+										break;
+									case "XGBOOST": algorithmName = "XG";
+										break;
+									case "RANDOMFOREST": algorithmName = "RF";
+										break;
+									case "NAIVEBAYES": algorithmName = "NB";
+										break;
+									case "NEURALNETWORK(PYTORCH)": algorithmName = "PT";
+										break;
+									case "NEURALNETWORK(TENSORFLOW)": algorithmName = "TF";
+										break;
+									case "NEURALNETWORK(SKLEARN)": algorithmName = "NN";
+										break;
+									case "ENSEMBLE": algorithmName = "EN";
+										break;
+									case "ADABOOST": algorithmName = "ADAB";
+										break;
+									case "LIGHTGBM": algorithmName = "LGBM";
+										break;
+								}
+								let sel = selAlgoList.filter(i => (i.model_id).includes(algorithmName+"_"))
+								let link = { classTag: null,
+									data: "<a class=summaryLink href=/apps/automated-prediction-30vq9q5scd/autoML/modelManagement/"+sel[0].slug+">(For More Info Click Here)</a>",
+									dataType: "html" }
+								cardDataArray.push(link)
+							}
+						}
+					}else if(that.props.currentAppDetails.app_id === 13 && !that.props.modelSlug.includes("_shared")){
+						if(cardDataArray.filter(i=>i.dataType==="html").length>0){
+							let headCard = cardDataArray.filter(i=>i.dataType==="html");
+							if(headCard[0].data.includes("'sm-mb-20'")){
+								cardDataArray[0].data = cardDataArray[0].data.replace("<small>Summary</small>","")
+								let regAlgoName= headCard[0].data.replace(/<[^>]+>/g, '')
+								let algorithmName = ""
+								switch(regAlgoName){
+									case "Gradient Boosted Tree Regression": algorithmName = "GB";
+										break;
+									case "Random Forest Regression": algorithmName = "RFR";
+										break;
+									case "Decision Tree Regression": algorithmName = "DT"
+										break;
+									case "Linear Regression": algorithmName = "LR"
+										break;
+									case "Neural Network (TensorFlow)": algorithmName = "TF";
+										break;
+								}
+								let sel = selAlgoList.filter(i => (i.model_id).includes(algorithmName+"_"))
+								let link = { classTag: null,
+									data: "<a class=summaryLinkReg href=/apps/automated-prediction-30vq9q5scd/autoML/modelManagement/"+sel[0].slug+">(For More Info Click Here)</a>",
+									dataType: "html" }
+								cardDataArray.splice(1, 0, link);
+							}
+						}
+					}
 					var clearfixClass = "col-md-"+data.cardWidth*0.12+" clearfix";
 					var nonClearfixClass = "col-md-"+data.cardWidth*0.12;
-					var cardDataArray = data.cardData;
 					if(cardDataArray.length>0){
 						if((cardDataArray.filter(i=>(i.dataType==="table" && i.data.tableData.length===1))).length!=0 ){
 							let newData = {}

@@ -12,7 +12,6 @@ OCR Validations
 # pylint: disable=line-too-long
 # pylint: disable=inconsistent-return-statements
 # -------------------------------------------------------------------------------
-import os
 import re
 import socket
 from django.core.exceptions import ValidationError

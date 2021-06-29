@@ -1124,28 +1124,28 @@ class StockDatasetView(viewsets.ModelViewSet):
             # return creation_failed_exception("Analysis name already exists")
             return "Analysis name already exists", [None]
         from api.StockAdvisor.crawling.process import fetch_news_articles
+        err_list = []
         companies = []
         no_articles_flag = False
         err_comp = []
+        insuff_comp = []
         for key in stocks:
             articles, message = fetch_news_articles(stocks[key], data['domains'])
             if isinstance(message, list):
                 err_comp.extend(message)
+            if isinstance(message, dict):
+                insuff_comp.append(message['insuff'])
             if articles is None or len(articles) <= 0:
                 no_articles_flag = True
                 companies.append(stocks[key])
-        print(*err_comp)
         if err_comp:
-            return 'No news articles found for {}'.format(','.join(err_comp)), err_comp
-        if no_articles_flag:
-            if len(companies) > 1:
-                company_str = "{} and {}".format(", ".join(companies[:-1]), companies[-1])
-            else:
-                company_str = companies[0]
-            # return creation_failed_exception("No news articles found for "+company_str)
-            return message, companies
+            err_list.append('No news articles found for {}'.format(','.join(err_comp)))
+            return '. '.join(err_list), err_comp
+        if insuff_comp:
+            err_list.append("Insufficient articles found for {}".format(','.join(insuff_comp)))
         else:
             return None, [None]
+        return '. '.join(err_list), err_comp
 
     def create(self, request, *args, **kwargs):
 

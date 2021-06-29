@@ -3,7 +3,7 @@ from __future__ import absolute_import
 from builtins import str
 import re
 import sys
-
+import calendar
 from newsapi.newsapi_exception import NewsAPIException
 
 from django.conf import settings
@@ -178,6 +178,11 @@ company_list = {"XOM": "Exxon Mobil Corporation",
                 }
 
 
+def findDay(date):
+    born = datetime.datetime.strptime(date, '%Y-%m-%d').weekday()
+    return calendar.day_name[born]
+
+
 def fetch_news_articles(cur_stock, domains):
     from newsapi import NewsApiClient
 
@@ -207,12 +212,22 @@ def fetch_news_articles(cur_stock, domains):
                                           )
         if all_news is not None and len(all_news):
             articles.extend(all_news['articles'])
+            set_ = set({})
+            for i in articles:
+                date = i['publishedAt'].split('T')[0]
+                day = findDay(date)
+                if day not in ['Saturday', 'Sunday']:
+                    set_.update({day})
+                if len(set_) < 4:
+                    message = {'insuff': cur_stock}
+                else:
+                    message = None
     except NewsAPIException as ex:
         # print("Method failed with message: " + ex.get_message())
         return None, ex.get_message()
     if not articles:
         return None, [cur_stock]
-    return articles, None
+    return articles, message
 
 
 def fetch_stock_news_from_newsapi(cur_stock, domains):
